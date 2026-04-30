@@ -1,97 +1,98 @@
 @echo off
-REM WirelessADB Windows Installer
-REM Run this as Administrator for system-wide installation
+setlocal EnableDelayedExpansion
+title WirelessADB Installer - Mark II 🤖
 
 echo ============================================================
-echo   WirelessADB - Windows Installation
+echo        WIRELESS ADB - ADVANCED DEPLOYMENT (MARK II) 🔥
 echo ============================================================
 echo.
 
-REM Check for Python
-python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERROR] Python not found!
-    echo.
-    echo Please install Python from: https://www.python.org/downloads/
-    echo Make sure to check "Add Python to PATH" during installation
-    echo.
-    pause
-    exit /b 1
-)
-
-echo [OK] Python found
-echo.
-
-REM Check for ADB
-adb version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [WARNING] ADB not found in PATH
-    echo.
-    echo Please install Android Platform Tools:
-    echo 1. Download from: https://developer.android.com/studio/releases/platform-tools
-    echo 2. Extract to C:\platform-tools\
-    echo 3. Run: setx PATH "%%PATH%%;C:\platform-tools"
-    echo 4. Restart this installer
-    echo.
-    pause
-    exit /b 1
-)
-
-echo [OK] ADB found
-echo.
-
-REM Check for admin rights
+:: 1. Admin Privilege Detection 🛡️
 net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [INFO] Not running as Administrator
-    echo       Installing for current user only...
-    echo.
-    
-    REM User installation
-    set INSTALL_DIR=%USERPROFILE%\.wireless_adb
-    set WRAPPER_PATH=%USERPROFILE%\wireless-adb.bat
-    
-    mkdir "%INSTALL_DIR%" 2>nul
-    copy /Y wireless_adb.py "%INSTALL_DIR%\wireless_adb.py" >nul
-    
-    REM Create wrapper batch file
-    echo @echo off > "%WRAPPER_PATH%"
-    echo python "%INSTALL_DIR%\wireless_adb.py" %%* >> "%WRAPPER_PATH%"
-    
-    echo [OK] Installed to: %INSTALL_DIR%
-    echo [OK] Wrapper created: %WRAPPER_PATH%
-    echo.
-    echo Add to PATH manually:
-    echo setx PATH "%%PATH%%;%USERPROFILE%"
-    
+if %errorLevel% == 0 (
+    set "IS_ADMIN=1"
+    set "INSTALL_DIR=C:\WirelessADB"
+    set "WRAPPER_PATH=C:\Windows\wireless-adb.bat"
+    echo [INFO] Running with SYSTEM privileges. Absolute power. 😈
 ) else (
-    echo [INFO] Running as Administrator
-    echo       Installing system-wide...
-    echo.
-    
-    REM System-wide installation
-    set INSTALL_DIR=C:\WirelessADB
-    set WRAPPER_PATH=C:\Windows\wireless-adb.bat
-    
+    set "IS_ADMIN=0"
+    set "INSTALL_DIR=%USERPROFILE%\.wireless_adb"
+    set "WRAPPER_PATH=%USERPROFILE%\wireless-adb.bat"
+    echo [INFO] Running in User mode. (Right-click "Run as Admin" for system-wide 💀)
+)
+echo.
+
+:: 2. Pre-flight Diagnostics (Python & ADB) 🚀
+echo [*] Running pre-flight diagnostics...
+python --version >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [FATAL] Python is missing! Go fetch it bro. 😭
+    pause
+    exit /b 1
+)
+adb version >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [WARN] ADB not found in PATH! Make sure to fix that later. 😳
+) else (
+    echo [OK] ADB detected.
+)
+echo [OK] Core dependencies verified. 👌
+echo.
+
+:: 3. Python Dependency Auto-Installer 📦
+echo [*] Checking Python dependencies...
+if exist "requirements.txt" (
+    python -m pip install -r requirements.txt --quiet
+    echo [OK] Dependencies locked and loaded. 💯
+) else (
+    echo [SKIP] No requirements.txt found. Moving on. 🏃‍♂️
+)
+echo.
+
+:: 4. Installation & Update Protocol 💾
+if exist "%INSTALL_DIR%\wireless_adb.py" (
+    echo [INFO] Existing installation detected at %INSTALL_DIR%.
+    echo [*] Initiating Overwrite/Update protocol... 🔄
+) else (
+    echo [*] Creating fresh directories... 🏗️
     mkdir "%INSTALL_DIR%" 2>nul
-    copy /Y wireless_adb.py "%INSTALL_DIR%\wireless_adb.py" >nul
-    
-    REM Create wrapper batch file
-    echo @echo off > "%WRAPPER_PATH%"
-    echo python "%INSTALL_DIR%\wireless_adb.py" %%* >> "%WRAPPER_PATH%"
-    
-    echo [OK] Installed to: %INSTALL_DIR%
-    echo [OK] Wrapper created: %WRAPPER_PATH%
 )
 
+:: Payload check so the user doesn't brick their setup 💀
+if not exist "wireless_adb.py" (
+    echo [FATAL] wireless_adb.py not found in current folder! Bruh, where is the payload? 😭
+    pause
+    exit /b 1
+)
+
+copy /Y "wireless_adb.py" "%INSTALL_DIR%\wireless_adb.py" >nul
+echo [OK] Payload injected to %INSTALL_DIR%. 🎯
+
+:: 5. Dynamic Wrapper Creation 🛠️
+echo @echo off > "%WRAPPER_PATH%"
+:: Using double percents to escape the arg variable properly
+echo python "%INSTALL_DIR%\wireless_adb.py" %%* >> "%WRAPPER_PATH%"
+echo [OK] Global wrapper forged at %WRAPPER_PATH%. 🔨
 echo.
+
+:: 6. The PATH Power Move ⚡
+if %IS_ADMIN%==0 (
+    echo [*] Injecting wrapper into User PATH... 💉
+    :: PowerShell injection prevents the 1024 char truncation bug native to setx
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$path = [Environment]::GetEnvironmentVariable('Path', 'User'); if ($path -notmatch [regex]::Escape('%USERPROFILE%')) { [Environment]::SetEnvironmentVariable('Path', $path + ';%USERPROFILE%', 'User') }" >nul 2>&1
+    echo [OK] User PATH updated safely! No manual setup needed. 🧠
+) else (
+    :: C:\Windows is already in System PATH. No registry edit needed! 🤯
+    echo [OK] Wrapper placed in C:\Windows. Inheriting default System PATH. 🌌
+)
+echo.
+
 echo ============================================================
-echo   Installation Complete!
+echo   DEPLOYMENT SUCCESSFUL. SYSTEM IS ONLINE. 🚀🔥
 echo ============================================================
 echo.
-echo Test with: wireless-adb status
-echo.
-echo Note: You may need to restart your terminal/PowerShell
-echo       for the PATH changes to take effect.
+echo Next Steps:
+echo 1. Restart your terminal (to reload the PATH variables).
+echo 2. Type 'wireless-adb' to execute.
 echo.
 pause
