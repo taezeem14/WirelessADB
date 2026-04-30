@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
 setlocal EnableDelayedExpansion
-title WirelessADB Installer - Mark II 🤖
+title WirelessADB Installer - Mark III 
 
 echo ============================================================
-echo        WIRELESS ADB - ADVANCED DEPLOYMENT (MARK II) 🔥
+echo        WIRELESS ADB - ADVANCED DEPLOYMENT (MARK III) 🔥
 echo ============================================================
 echo.
 
@@ -23,7 +23,7 @@ if %errorLevel% == 0 (
 )
 echo.
 
-:: 2. Pre-flight Diagnostics (Python & ADB) 🚀
+:: 2. Pre-flight Diagnostics (Python and ADB) 🚀
 echo [*] Running pre-flight diagnostics...
 python --version >nul 2>&1
 if %errorLevel% neq 0 (
@@ -46,11 +46,11 @@ if exist "requirements.txt" (
     python -m pip install -r requirements.txt --quiet
     echo [OK] Dependencies locked and loaded. 💯
 ) else (
-    echo [SKIP] No requirements.txt found. Moving on. 🏃‍♂️
+    echo [SKIP] No requirements.txt found. Moving on. 
 )
 echo.
 
-:: 4. Installation & Update Protocol 💾
+:: 4. Installation and Update Protocol 💾
 if exist "%INSTALL_DIR%\wireless_adb.py" (
     echo [INFO] Existing installation detected at %INSTALL_DIR%.
     echo [*] Initiating Overwrite/Update protocol... 🔄
@@ -59,7 +59,7 @@ if exist "%INSTALL_DIR%\wireless_adb.py" (
     mkdir "%INSTALL_DIR%" 2>nul
 )
 
-:: Payload check so the user doesn't brick their setup 💀
+:: Payload check
 if not exist "wireless_adb.py" (
     echo [FATAL] wireless_adb.py not found in current folder! Bruh, where is the payload? 😭
     pause
@@ -71,7 +71,6 @@ echo [OK] Payload injected to %INSTALL_DIR%. 🎯
 
 :: 5. Dynamic Wrapper Creation 🛠️
 echo @echo off > "%WRAPPER_PATH%"
-:: Using double percents to escape the arg variable properly
 echo python "%INSTALL_DIR%\wireless_adb.py" %%* >> "%WRAPPER_PATH%"
 echo [OK] Global wrapper forged at %WRAPPER_PATH%. 🔨
 echo.
@@ -79,11 +78,9 @@ echo.
 :: 6. The PATH Power Move ⚡
 if %IS_ADMIN%==0 (
     echo [*] Injecting wrapper into User PATH... 💉
-    :: PowerShell injection prevents the 1024 char truncation bug native to setx
     powershell -NoProfile -ExecutionPolicy Bypass -Command "$path = [Environment]::GetEnvironmentVariable('Path', 'User'); if ($path -notmatch [regex]::Escape('%USERPROFILE%')) { [Environment]::SetEnvironmentVariable('Path', $path + ';%USERPROFILE%', 'User') }" >nul 2>&1
     echo [OK] User PATH updated safely! No manual setup needed. 🧠
 ) else (
-    :: C:\Windows is already in System PATH. No registry edit needed! 🤯
     echo [OK] Wrapper placed in C:\Windows. Inheriting default System PATH. 🌌
 )
 echo.
