@@ -1,111 +1,89 @@
-#!/bin/bash
-# WirelessADB Linux Installer
+#!/usr/bin/env bash
+# ==============================================================================
+# ⚡ WirelessADB - Linux One-Click Installer & Setup Suite
+# ==============================================================================
 
 set -e
 
-echo "============================================================"
-echo "  WirelessADB - Linux Installation"
-echo "============================================================"
-echo ""
-
-# Colors
-RED='\033[0;31m'
+# Color definitions
 GREEN='\033[0;32m'
+CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+RED='\033[0;31m'
+BOLD='\033[1m'
+NC='\033[0m'
 
-# Check for Python 3
+echo -e "${CYAN}"
+echo "  =============================================================="
+echo "    ⚡ WIRELESS ADB - NEXT-GEN SUITE INSTALLER (LINUX) 🚀"
+echo "  =============================================================="
+echo -e "${NC}"
+
+# Check Python 3
 if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}[ERROR]${NC} Python 3 not found!"
-    echo ""
-    echo "Install with:"
-    echo "  Ubuntu/Debian: sudo apt install python3"
-    echo "  Fedora:        sudo dnf install python3"
-    echo "  Arch:          sudo pacman -S python"
+    echo -e "${RED}[FATAL] Python 3 is not installed.${NC}"
+    echo "Install via your package manager:"
+    echo "  Ubuntu/Debian : sudo apt install -y python3 python3-pip"
+    echo "  Fedora/RHEL   : sudo dnf install -y python3"
+    echo "  Arch Linux    : sudo pacman -S --noconfirm python"
     exit 1
 fi
+echo -e "${GREEN}[OK]${NC} Python 3 detected: $(python3 --version)"
 
-echo -e "${GREEN}[OK]${NC} Python 3 found: $(python3 --version)"
-
-# Check for ADB
+# Check ADB
 if ! command -v adb &> /dev/null; then
-    echo -e "${YELLOW}[WARNING]${NC} ADB not found in PATH"
-    echo ""
-    echo "Install with:"
-    echo "  Ubuntu/Debian: sudo apt install android-tools-adb"
-    echo "  Fedora:        sudo dnf install android-tools"
-    echo "  Arch:          sudo pacman -S android-tools"
-    echo ""
-    read -p "Install ADB automatically? (Ubuntu/Debian only) [y/N]: " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        sudo apt update && sudo apt install -y android-tools-adb
-        echo -e "${GREEN}[OK]${NC} ADB installed"
-    else
-        exit 1
+    echo -e "${YELLOW}[WARN] ADB not detected in PATH!${NC}"
+    read -p "Attempt automatic ADB package installation? [Y/n]: " -r confirm
+    confirm=${confirm:-Y}
+    if [[ $confirm =~ ^[Yy]$ ]]; then
+        if command -v apt &> /dev/null; then
+            sudo apt update && sudo apt install -y android-tools-adb
+        elif command -v pacman &> /dev/null; then
+            sudo pacman -S --noconfirm android-tools
+        elif command -v dnf &> /dev/null; then
+            sudo dnf install -y android-tools
+        elif command -v zypper &> /dev/null; then
+            sudo zypper install -y android-tools
+        else
+            echo -e "${RED}Could not detect supported package manager. Please install adb manually.${NC}"
+        fi
     fi
 fi
 
-echo -e "${GREEN}[OK]${NC} ADB found: $(adb version | head -n1)"
-echo ""
+if command -v adb &> /dev/null; then
+    echo -e "${GREEN}[OK]${NC} ADB detected: $(adb version | head -n1)"
+fi
 
-# Determine installation type
+# Target Directory
 if [ "$EUID" -eq 0 ]; then
-    echo -e "${YELLOW}[WARNING]${NC} Running as root - installing system-wide"
     INSTALL_DIR="/usr/local/bin"
-    INSTALL_PATH="$INSTALL_DIR/wireless-adb"
+    echo -e "${CYAN}[SYSTEM] Installing system-wide to $INSTALL_DIR...${NC}"
 else
-    echo "[INFO] Installing for current user"
     INSTALL_DIR="$HOME/.local/bin"
-    INSTALL_PATH="$INSTALL_DIR/wireless-adb"
-    
-    # Create directory if it doesn't exist
+    echo -e "${CYAN}[USER] Installing for current user to $INSTALL_DIR...${NC}"
     mkdir -p "$INSTALL_DIR"
-    
-    # Check if directory is in PATH
-    if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-        echo -e "${YELLOW}[WARNING]${NC} $INSTALL_DIR is not in your PATH"
-        echo ""
-        echo "Add this line to your ~/.bashrc or ~/.zshrc:"
-        echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
-        echo ""
-    fi
 fi
 
-# Copy file
-if [ "$EUID" -eq 0 ]; then
-    cp wireless_adb.py "$INSTALL_PATH"
-else
-    cp wireless_adb.py "$INSTALL_PATH"
+# Copy binary
+cp wireless_adb.py "$INSTALL_DIR/wireless-adb"
+chmod +x "$INSTALL_DIR/wireless-adb"
+
+# Create shortcut alias wadb
+ln -sf "$INSTALL_DIR/wireless-adb" "$INSTALL_DIR/wadb"
+
+echo -e "${GREEN}[OK]${NC} Installed binary: ${BOLD}$INSTALL_DIR/wireless-adb${NC}"
+echo -e "${GREEN}[OK]${NC} Created alias   : ${BOLD}$INSTALL_DIR/wadb${NC}"
+
+# Check PATH
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    echo -e "${YELLOW}[NOTE] $INSTALL_DIR is not in your current PATH.${NC}"
+    echo "Add the following line to your ~/.bashrc or ~/.zshrc:"
+    echo -e "  ${CYAN}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
 fi
 
-# Make executable
-chmod +x "$INSTALL_PATH"
-
-echo -e "${GREEN}[OK]${NC} Installed to: $INSTALL_PATH"
 echo ""
-
-# Test installation
-if wireless-adb status &> /dev/null; then
-    echo "============================================================"
-    echo "  Installation Complete!"
-    echo "============================================================"
-    echo ""
-    echo "Test with: wireless-adb status"
-    echo ""
-else
-    echo -e "${YELLOW}[WARNING]${NC} Installation complete but 'wireless-adb' not found in PATH"
-    echo ""
-    echo "Restart your terminal or run:"
-    echo "  source ~/.bashrc"
-    echo ""
-    echo "Or use the full path:"
-    echo "  $INSTALL_PATH status"
-    echo ""
-fi
-
-echo "Quick Start:"
-echo "  1. Connect Android device via USB"
-echo "  2. Enable USB debugging"
-echo "  3. Run: wireless-adb connect"
+echo -e "${GREEN}==============================================================${NC}"
+echo -e "${GREEN}  🎉 INSTALLATION COMPLETE! SYSTEM IS ONLINE. 🚀🔥${NC}"
+echo -e "${GREEN}==============================================================${NC}"
 echo ""
+echo "Run 'wireless-adb' or 'wadb' in your terminal to begin."

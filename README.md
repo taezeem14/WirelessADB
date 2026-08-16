@@ -1,662 +1,273 @@
-# WirelessADB - Secure Wireless ADB Connection Manager
+# ⚡ WirelessADB
 
-A production-grade command-line tool for managing wireless ADB connections with enhanced security features. Built for developers who want safer, more convenient wireless debugging.
-
-## 🚀 Why WirelessADB?
-
-Traditional wireless ADB (`adb tcpip 5555`) has several security issues:
-- **Fixed port (5555)** makes devices easy targets for port scanners
-- **No automatic cleanup** - connections persist after you're done
-- **Manual IP/port management** is tedious and error-prone
-- **No security warnings** about network risks
-
-**WirelessADB solves these problems:**
-- ✅ Random high ports (30000-50000) for each session
-- ✅ Automatic connection management and cleanup
-- ✅ Network security warnings and subnet detection
-- ✅ Connection profiles and easy reconnection
-- ✅ Multi-device support with selection menu
-- ✅ Cross-platform (Windows & Linux)
-
----
-
-## 🔒 Security Improvements
-
-### Random Port Selection
-Instead of using the well-known port 5555, WirelessADB generates a random port in the range 30000-50000 for each connection:
+<div align="center">
 
 ```
-Traditional:  adb tcpip 5555  (predictable, scannable)
-WirelessADB:  Random port like 37482, 42193, 31847, etc.
+  ██╗    ██╗██╗██████╗ ███████╗██╗     ███████╗███████╗███████╗ █████╗ ██████╗ ██████╗ 
+  ██║    ██║██║██╔══██╗██╔════╝██║     ██╔════╝██╔════╝██╔════╝██╔══██╗██╔══██╗██╔══██╗
+  ██║ █╗ ██║██║██████╔╝█████╗  ██║     █████╗  ███████╗███████╗███████║██║  ██║██████╔╝
+  ██║███╗██║██║██╔══██╗██╔══╝  ██║     ██╔══╝  ╚════██║╚════██║██╔══██║██║  ██║██╔══██╗
+  ╚███╔███╔╝██║██║  ██║███████╗███████╗███████╗███████║███████║██║  ██║██████╔╝██████╔╝
+   ╚══╝╚══╝ ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═════╝ ╚═════╝ 
 ```
 
-**Why this matters:**
-- Attackers commonly scan for port 5555 on networks
-- Random ports significantly reduce exposure to automated attacks
-- Even if someone scans your IP, they won't know which port to target
-- Each session uses a different port
+### **The Next-Gen Wireless Android Debugging & Telemetry Suite**
+*Cut the cables. Stay secure. Debug at lightspeed.* 🚀🔥
 
-### Network Security Features
-- **Subnet checking**: Warns if device and host are on different networks
-- **Security warnings**: Clear notices about wireless ADB risks
-- **Auto-disconnect**: Cleans up connections when you exit
-- **USB reset**: Optionally switches device back to USB-only mode
-- **Connection logging**: Tracks when/where devices were connected
+[![GitHub Stars](https://img.shields.io/github/stars/taezeem14/WirelessADB?style=for-the-badge&color=ffd700&logo=github)](https://github.com/taezeem14/WirelessADB/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-00f2fe.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![Python: 3.7+](https://img.shields.io/badge/Python-3.7+-38ef7d.svg?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-7f00ff.svg?style=for-the-badge)](https://github.com/taezeem14/WirelessADB)
+[![Zero-Dependency](https://img.shields.io/badge/Dependencies-Zero%20(Pure%20Python)-ff007f.svg?style=for-the-badge)](https://github.com/taezeem14/WirelessADB)
 
-### Important Security Disclaimer
-⚠️ **Wireless ADB is inherently insecure** - anyone on your network can potentially access your device. Random ports reduce risk but don't eliminate it. Best practices:
+[Key Features](#-key-features) • [Quick Install](#-one-line-install) • [Interactive TUI](#-interactive-tui--cli-showcase) • [Architecture](#-system-architecture) • [Security](#-security-first-architecture) • [Command Reference](#-command-matrix)
 
-- ✅ Use only on trusted private networks (home, office VPN)
-- ✅ Disconnect when done (`wireless-adb disconnect`)
-- ✅ Never use on public Wi-Fi (coffee shops, airports, etc.)
-- ✅ Consider using a USB cable for sensitive operations
-- ✅ Monitor connected devices regularly (`wireless-adb status`)
+</div>
 
 ---
 
-## 📋 Requirements
+## 💡 Why WirelessADB?
 
-- **Python 3.7+** (cross-platform)
-- **Android Debug Bridge (ADB)** installed and in PATH
-- **Android device** running Android 8.1+ with USB debugging enabled
-- **USB cable** (for initial connection)
-- **Wi-Fi connection** on both device and host
+Vanilla `adb tcpip 5555` is **painful, slow, and insecure**:
+- 💀 **Fixed Port 5555**: A massive neon sign for LAN port scanners and malware.
+- 🔌 **Tethered Hell**: Endless plugging/unplugging cables just to fetch your IP.
+- 👻 **Ghost Disconnects**: Wi-Fi blips kill your session with zero auto-recovery.
+- 💤 **Zero Telemetry**: No clue about battery percentage, network latency, or link speed.
+
+### 🔥 Enter WirelessADB
+**WirelessADB** transforms ADB into a high-octane, interactive developer console. It automates random high-port negotiation (30000–50000), enables **Android 11+ zero-wire Wi-Fi pairing**, monitors live device telemetry, launches 60 FPS `scrcpy` mirroring in 1 keystroke, and auto-heals dropped connections in the background.
 
 ---
 
-## 🛠️ Installation
+## ⚡ Comparison: Vanilla ADB vs WirelessADB
 
-### Windows
+| Feature | 🚫 Vanilla `adb` | ⚡ WirelessADB Suite |
+| :--- | :---: | :---: |
+| **Port Security** | Hardcoded `5555` (Known CVE target) | **Dynamic High-Port (30000–50000)** 🛡️ |
+| **Android 11+ Zero-Cable Pairing** | Manual multi-step PIN CLI | **One-Step Guided Wizard (`pair`)** 📱 |
+| **Interactive Terminal Menu** | ❌ None | **Full Cyberpunk TUI Dashboard (`menu`)** 🎨 |
+| **Auto-Reconnect Watcher** | ❌ Manual retry | **Background Daemon Auto-Heal (`watch`)** 🔄 |
+| **Live Battery & Thermal Meters** | ❌ None | **Real-time % / State / Temp HUD** 🔋 |
+| **Network Latency & Signal RSSI** | ❌ None | **Live Ping (ms) & Subnet Guard** 📶 |
+| **One-Click Screen Mirror** | ❌ Manual scrcpy flags | **Optimized 60 FPS Screen Mirror (`mirror`)** 🖥️ |
+| **Subnet Mismatch Alert** | ❌ Silent failure | **Automatic VLAN / Subnet Check** ⚠️ |
+| **Zero Dependencies** | N/A | **100% Pure Python Standard Library** 📦 |
 
-#### Option 1: Direct Download (Easiest)
-1. Download `wireless_adb.py` from this repository
-2. Install Python from [python.org](https://www.python.org/downloads/) (ensure "Add to PATH" is checked)
-3. Install ADB:
-   - Download [Platform Tools](https://developer.android.com/studio/releases/platform-tools)
-   - Extract to `C:\platform-tools\`
-   - Add to PATH: `setx PATH "%PATH%;C:\platform-tools"`
+---
 
-4. Make it easily accessible:
+## 🚀 One-Line Install
+
+### 🪟 Windows (PowerShell / CMD)
 ```powershell
-# Create a batch wrapper (run as Administrator)
-echo @python "%USERPROFILE%\wireless_adb.py" %* > C:\Windows\wireless-adb.bat
+irm https://raw.githubusercontent.com/taezeem14/WirelessADB/main/install_windows.bat -OutFile install.bat; .\install.bat
 ```
+*Or clone and double-click `install_windows.bat`!*
 
-5. Test installation:
-```powershell
-wireless-adb status
-```
-
-#### Option 2: Git Clone
-```powershell
-git clone https://github.com/yourusername/wireless-adb.git
-cd wireless-adb
-python wireless_adb.py status
-```
-
-### Linux
-
-#### Option 1: System-wide Install (Recommended)
+### 🐧 Linux (Bash / Zsh)
 ```bash
-# Install dependencies
-sudo apt update
-sudo apt install android-tools-adb python3 python3-pip
-
-# Download the tool
-wget https://raw.githubusercontent.com/yourusername/wireless-adb/main/wireless_adb.py
-chmod +x wireless_adb.py
-
-# Install system-wide
-sudo mv wireless_adb.py /usr/local/bin/wireless-adb
-sudo chmod +x /usr/local/bin/wireless-adb
-
-# Test
-wireless-adb status
+curl -fsSL https://raw.githubusercontent.com/taezeem14/WirelessADB/main/install_linux.sh | bash
 ```
 
-#### Option 2: User Install
+### 🍏 macOS (Homebrew / Terminal)
 ```bash
-# Install to ~/.local/bin
-mkdir -p ~/.local/bin
-cp wireless_adb.py ~/.local/bin/wireless-adb
-chmod +x ~/.local/bin/wireless-adb
-
-# Add to PATH (add to ~/.bashrc or ~/.zshrc)
-export PATH="$HOME/.local/bin:$PATH"
-
-# Reload shell
-source ~/.bashrc
-
-# Test
-wireless-adb status
+curl -fsSL https://raw.githubusercontent.com/taezeem14/WirelessADB/main/install_macos.sh | bash
 ```
 
-#### Option 3: Git Clone
+### 🐍 Pip / Pipx
 ```bash
-git clone https://github.com/yourusername/wireless-adb.git
-cd wireless-adb
-chmod +x wireless_adb.py
-./wireless_adb.py status
-```
-
-### Verify Installation
-
-```bash
-# Check Python version
-python3 --version  # Should be 3.7+
-
-# Check ADB
-adb version        # Should show ADB version
-
-# Check WirelessADB
-wireless-adb status
+pip install git+https://github.com/taezeem14/WirelessADB.git
 ```
 
 ---
 
-## 🎯 Usage
+## 🎮 Interactive TUI & CLI Showcase
 
-### Basic Workflow
-
+Launch the interactive control center anytime by simply typing:
 ```bash
-# 1. Connect device via USB and enable USB debugging
+wireless-adb
+# or using the ultra-fast alias:
+wadb
+```
 
-# 2. Connect wirelessly (generates random port automatically)
+```
+╭─ ⚡ WIRELESS ADB CONTROL CENTER ────────────────────────────────╮
+│ Status: 1 Wireless | 0 USB                                     │
+│                                                                │
+│   [1] ⚡ Connect USB Device to Wireless (Auto High-Port)        │
+│   [2] 📱 Pair via Android 11+ Wi-Fi (No Cable Needed)          │
+│   [3] 📊 Show Live Status Dashboard & Latency                  │
+│   [4] 🔄 Quick Reconnect to Last Device                        │
+│   [5] 🔍 Deep Device Telemetry (Battery, CPU, Wi-Fi)           │
+│   [6] 🚀 Launch scrcpy Screen Mirror                           │
+│   [7] 💻 Open Wireless Terminal Shell                          │
+│   [8] 📡 Scan Network for ADB Devices                          │
+│   [9] 🩺 Run Doctor Health Diagnostics                         │
+│   [0] 🔌 Disconnect & Clean Up All Sessions                    │
+│   [q] 🚪 Quit                                                  │
+╰────────────────────────────────────────────────────────────────╯
+```
+
+---
+
+## 🏗️ System Architecture
+
+```mermaid
+graph TD
+    subgraph Host ["💻 Developer Workstation"]
+        CLI["⚡ WirelessADB Core Engine (CLI/TUI)"]
+        CONF[("📁 ~/.wireless_adb/profiles.json")]
+        WATCH["👁️ Watcher Daemon (Auto-Heal)"]
+        SCRCPY["🚀 scrcpy 60FPS Video Engine"]
+        ADBC["ADB Client / Server"]
+    end
+
+    subgraph Transport ["🛡️ Security & Transport Layer"]
+        USB["🔌 USB Physical Bridge (Initial Auth)"]
+        WIFI["📡 Wi-Fi 802.11ax / 5GHz (TCP/IP High Port)"]
+        MDNS["🔍 mDNS Zeroconf Discovery"]
+    end
+
+    subgraph Target ["📱 Android Target Device"]
+        ADBD["adbd (Daemon Service)"]
+        PROP["System Telemetry (Battery / WiFi / Thermal)"]
+        A11["Android 11+ Pairing Manager"]
+    end
+
+    CLI -->|Read/Write| CONF
+    CLI -->|Manage Sessions| ADBC
+    WATCH -->|Heartbeat Ping| ADBC
+    CLI -->|Stream Mirror| SCRCPY
+    
+    ADBC -->|Initial Handshake| USB
+    ADBC -->|High-Port 30000-50000| WIFI
+    ADBC -->|Zero-Wire Pair PIN| MDNS
+
+    USB --> ADBD
+    WIFI --> ADBD
+    MDNS --> A11
+    ADBD --> PROP
+```
+
+---
+
+## 🔄 Connection Workflows
+
+### 1. Standard USB-to-Wireless Auto-Handshake
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as 👨‍💻 Developer
+    participant WADB as ⚡ WirelessADB
+    participant Host as 💻 ADB Host
+    participant Phone as 📱 Android Device
+
+    Dev->>WADB: Runs 'wireless-adb connect'
+    WADB->>Host: Query USB devices ('adb devices -l')
+    Host-->>WADB: Returns Serial & Model Name
+    WADB->>Phone: Probe Wi-Fi IP ('ip addr show wlan0')
+    Phone-->>WADB: 192.168.1.145
+    WADB->>WADB: Generate random high port (e.g. 43891)
+    WADB->>Phone: 'adb tcpip 43891'
+    Phone-->>WADB: TCP/IP Port Opened
+    WADB->>Host: 'adb connect 192.168.1.145:43891'
+    Host-->>WADB: Handshake Connected!
+    WADB->>Dev: 🎉 "Unplug USB Cable! Device is Wireless"
+```
+
+### 2. Android 11+ Zero-Cable Wi-Fi Pairing
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as 👨‍💻 Developer
+    participant Phone as 📱 Android (Dev Options)
+    participant WADB as ⚡ WirelessADB
+
+    Dev->>Phone: Enable "Wireless Debugging" -> "Pair with code"
+    Phone-->>Dev: Displays 192.168.1.145:37281 & PIN: 849201
+    Dev->>WADB: 'wireless-adb pair'
+    WADB->>Phone: 'adb pair 192.168.1.145:37281 849201'
+    Phone-->>WADB: Handshake authenticated & RSA key stored
+    WADB->>Phone: 'adb connect 192.168.1.145:PORT'
+    WADB->>Dev: ✨ Zero-Wire Wireless Session Live!
+```
+
+---
+
+## 📋 Command Matrix
+
+| Command | Shorthand | Description |
+| :--- | :---: | :--- |
+| `wireless-adb` | `wadb` | Launch full interactive TUI Control Center. |
+| `wireless-adb connect` | `wadb connect` | Switch USB device to secure high-port wireless mode. |
+| `wireless-adb pair` | `wadb pair` | Android 11+ zero-wire Wi-Fi pairing wizard. |
+| `wireless-adb status` | `wadb status` | Live dashboard with latency pings and battery meters. |
+| `wireless-adb reconnect`| `wadb reconnect`| Reconnect instantly to last known device. |
+| `wireless-adb info` | `wadb info` | Deep device telemetry (RAM, CPU ABI, battery %, WiFi RSSI). |
+| `wireless-adb mirror` | `wadb mirror` | Instant 60 FPS low-latency screen mirror via `scrcpy`. |
+| `wireless-adb shell` | `wadb shell` | Direct interactive wireless terminal shell. |
+| `wireless-adb install <apk>` | `wadb install` | Wireless fast APK installer. |
+| `wireless-adb scan` | `wadb scan` | Scan local subnet and mDNS for active ADB endpoints. |
+| `wireless-adb watch` | `wadb watch` | Run auto-reconnection daemon for dropped Wi-Fi sessions. |
+| `wireless-adb doctor` | `wadb doctor` | Pre-flight diagnostics (ADB, Python, PATH, permissions). |
+| `wireless-adb disconnect`| `wadb disconnect`| Disconnect all wireless sessions and reset to USB mode. |
+
+---
+
+## 🔒 Security-First Architecture
+
+Wireless ADB inherently exposes a shell port over your local Wi-Fi. WirelessADB implements **defense-in-depth**:
+
+```
+ ┌─────────────────────────────────────────────────────────────┐
+ │               WIRELESSADB SECURITY SHIELD                   │
+ ├─────────────────────────────────────────────────────────────┤
+ │  🛡️ Dynamic Port Obfuscation : Random 30000-50000 range      │
+ │  🛡️ Subnet Isolation Guard  : Detects cross-VLAN leaks      │
+ │  🛡️ Zero-Residual Disconnect: Hard TCP reset to USB-only     │
+ │  🛡️ Ephemeral RSA Pairing   : Full Android 11 TLS crypt     │
+ └─────────────────────────────────────────────────────────────┘
+```
+
+1. **Port Obfuscation**: Eliminates default port `5555`, preventing automated mass-scanners on coffee shop / office Wi-Fi from detecting your device.
+2. **Subnet Verification**: Checks both host IPv4 and device IPv4 masks to warn if your device is inadvertently exposed to an unexpected subnet or public interface.
+3. **Clean Teardown**: `wireless-adb disconnect` resets the phone's daemon back to USB-only mode, closing any listening TCP sockets.
+
+---
+
+## 🧪 Developer Recipes
+
+### ⚛️ React Native & Expo
+```bash
+# Connect wirelessly, then start Metro bundler
 wireless-adb connect
-
-# 3. Unplug USB cable and continue working
-
-# 4. When done, clean up
-wireless-adb disconnect
+npx react-native run-android
 ```
 
-### All Commands
-
-#### `connect` - Initial Wireless Connection
-Detects USB device, generates random port, and establishes wireless connection.
-
-```bash
-wireless-adb connect
-
-# Verbose mode (shows all ADB commands)
-wireless-adb connect -v
-
-# Quiet mode (minimal output)
-wireless-adb connect -q
-```
-
-**Example Output:**
-```
-============================================================
-  WirelessADB - Secure Wireless ADB Connection Manager
-============================================================
-
-[1/5] Detecting USB-connected Android devices...
-[OK] Selected: Pixel 6 Pro (1A2B3C4D5E6F)
-
-[2/5] Retrieving device Wi-Fi IP address...
-[OK] Device IP: 192.168.1.145
-
-[3/5] Generating secure random port...
-[OK] Using port: 37482
-
-[4/5] Switching device to TCP/IP mode...
-[OK] TCP/IP mode enabled on port 37482
-
-[5/5] Connecting to device wirelessly...
-[OK] Connected wirelessly to 192.168.1.145:37482
-
-[SECURITY] Wireless ADB is INSECURE on untrusted networks!
-           • Anyone on the network can access your device
-           • Use only on trusted private networks
-           • Random ports reduce (but don't eliminate) risk
-
-============================================================
-  ✓ CONNECTED SUCCESSFULLY
-============================================================
-  Device: Pixel 6 Pro
-  Target: 192.168.1.145:37482
-
-  You can now disconnect the USB cable.
-  Run 'wireless-adb disconnect' to cleanup when done.
-```
-
-#### `disconnect` - Clean Disconnect
-Disconnects all wireless connections and optionally resets devices to USB mode.
-
-```bash
-wireless-adb disconnect
-
-# Disconnect but don't reset to USB mode
-wireless-adb disconnect --no-reset
-```
-
-#### `status` - Connection Status
-Shows all connected devices (USB and wireless) and saved profiles.
-
-```bash
-wireless-adb status
-```
-
-**Example Output:**
-```
-============================================================
-  WirelessADB - Connection Status
-============================================================
-
-USB Devices (1):
-  • 1A2B3C4D5E6F device product:raven model:Pixel_6_Pro device:raven
-
-Wireless Devices (1):
-  • 192.168.1.145:37482 device product:raven model:Pixel_6_Pro device:raven
-
-Saved Profiles (2):
-  • Pixel 6 Pro (1A2B3C4D5E6F)
-    Last: 192.168.1.145:37482 @ 2026-02-16 14:32:15
-  • Galaxy S21 (9Z8Y7X6W5V4U)
-    Last: 192.168.1.158:42193 @ 2026-02-15 18:45:22
-```
-
-#### `reconnect` - Quick Reconnect
-Reconnects to the last successfully connected device.
-
-```bash
-wireless-adb reconnect
-```
-
-Useful when:
-- Your device disconnected temporarily
-- You restarted your computer
-- Network connection was interrupted
-
-### Advanced Usage
-
-#### Multiple Devices
-If multiple USB devices are connected, you'll get a selection menu:
-
+### 💙 Flutter
 ```bash
 wireless-adb connect
-
-[FOUND] 2 devices connected:
-        [1] Pixel 6 Pro (1A2B3C4D5E6F)
-        [2] Galaxy S21 (9Z8Y7X6W5V4U)
-Select device [1-2]: 1
+flutter run -d $(wireless-adb status | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+')
 ```
 
-#### Verbose Debugging
-See all ADB commands and output:
-
-```bash
-wireless-adb connect -v
-
-[DEBUG] Running: adb version
-[DEBUG] Output: Android Debug Bridge version 1.0.41
-[DEBUG] Running: adb devices
-[DEBUG] Running: adb -s 1A2B3C4D5E6F shell ip addr show wlan0
-...
-```
-
-#### Windows CMD (No Color)
-If colors don't display properly:
-
-```bash
-wireless-adb connect --no-color
-```
-
----
-
-## 🔧 Configuration
-
-### Config File Location
-
-WirelessADB stores connection profiles in:
-- **Windows**: `C:\Users\YourName\.wireless_adb\profiles.json`
-- **Linux**: `~/.wireless_adb/profiles.json`
-
-### Profile Format
-
-```json
-{
-  "1A2B3C4D5E6F": {
-    "ip": "192.168.1.145",
-    "port": 37482,
-    "last_connected": 1708099935.123456,
-    "device_name": "Pixel 6 Pro"
-  }
-}
-```
-
-You can manually edit this file if needed, but it's automatically managed by the tool.
-
----
-
-## 🐛 Troubleshooting
-
-### "ADB not found in PATH"
-
-**Windows:**
-```powershell
-# Download Platform Tools from Android website
-# Extract to C:\platform-tools\
-# Add to PATH:
-setx PATH "%PATH%;C:\platform-tools"
-# Restart terminal
-adb version
-```
-
-**Linux:**
-```bash
-sudo apt install android-tools-adb
-# or
-sudo pacman -S android-tools
-```
-
-### "No USB devices found"
-
-1. **Enable USB Debugging:**
-   - Settings → About Phone → Tap "Build Number" 7 times
-   - Settings → Developer Options → Enable "USB Debugging"
-
-2. **Authorize Computer:**
-   - Unlock device
-   - Allow USB debugging popup
-
-3. **Check USB Connection:**
-   ```bash
-   adb devices
-   ```
-   Should show your device, not "unauthorized"
-
-4. **Try Different Cable/Port:**
-   - Some cables are charge-only
-   - Try different USB ports
-
-### "Could not get Wi-Fi IP"
-
-1. **Ensure Wi-Fi is Connected:**
-   - Device must be on Wi-Fi (not just mobile data)
-   - Pull down notification shade → verify Wi-Fi icon
-
-2. **Check Wi-Fi Interface:**
-   Some devices use different interface names:
-   ```bash
-   adb shell ip addr
-   ```
-   Look for your IP address
-
-### "Wireless connection failed"
-
-1. **Same Network:**
-   - Device and computer must be on same Wi-Fi network
-   - Corporate networks may block device-to-device communication
-
-2. **Firewall:**
-   - **Windows:** Allow Python through Windows Defender Firewall
-   - **Linux:** Check `iptables` or `ufw` rules
-   ```bash
-   sudo ufw allow from 192.168.1.0/24
-   ```
-
-3. **Router Settings:**
-   - Disable "AP Isolation" / "Client Isolation"
-   - Enable local network communication
-
-4. **Retry Connection:**
-   ```bash
-   wireless-adb disconnect
-   wireless-adb connect -v
-   ```
-
-### "Command timed out"
-
-- Increase timeout in code (line 70, `timeout=30`)
-- Check network speed/stability
-- Device may be overloaded
-
-### Random Port Conflicts
-
-Extremely rare (1 in 20,000 chance), but if port is in use:
-```bash
-# Just reconnect - new random port will be generated
-wireless-adb connect
-```
-
-### Multiple Devices Not Showing
-
-```bash
-# List all devices manually
-adb devices -l
-
-# Kill and restart ADB server
-adb kill-server
-adb start-server
-```
-
----
-
-## 🏗️ Architecture
-
-### Code Structure
-
-```
-wireless_adb.py
-├── Colors              # Terminal color codes
-├── LogLevel           # Verbosity levels
-├── DeviceProfile      # Device connection data
-├── ADBWrapper         # Low-level ADB command wrapper
-│   ├── _verify_adb()
-│   ├── run_command()
-│   ├── get_devices()
-│   ├── get_device_ip()
-│   ├── enable_tcpip()
-│   ├── connect_wireless()
-│   ├── disconnect()
-│   └── usb_mode()
-├── WirelessADBManager # High-level connection manager
-│   ├── connect()
-│   ├── disconnect()
-│   ├── status()
-│   ├── reconnect()
-│   ├── _generate_random_port()
-│   ├── _check_network_security()
-│   ├── _save_profile()
-│   └── _load_profile()
-└── main()             # CLI entry point
-```
-
-### Design Principles
-
-1. **Separation of Concerns:**
-   - `ADBWrapper`: Raw ADB command execution
-   - `WirelessADBManager`: Business logic and user interaction
-   - `main()`: CLI argument parsing
-
-2. **Error Handling:**
-   - Try/catch blocks around all ADB operations
-   - Graceful degradation (network check is best-effort)
-   - Clear error messages with actionable solutions
-
-3. **Cross-Platform:**
-   - Pure Python 3.7+ (no platform-specific dependencies)
-   - Color disable for Windows CMD
-   - IP detection works on both Windows and Linux
-
-4. **Testability:**
-   - Modular functions
-   - Dependency injection (ADBWrapper passed to Manager)
-   - Verbose mode for debugging
-
----
-
-## 🔐 Security Deep Dive
-
-### Why Random Ports Are Better
-
-**Traditional Approach (Port 5555):**
-```python
-# Attacker's script
-for ip in network_scan("192.168.1.0/24"):
-    if port_open(ip, 5555):
-        connect_adb(ip, 5555)  # Easy target!
-```
-
-**WirelessADB Approach (Random Ports):**
-```python
-# Attacker must scan ALL high ports (30000-50000)
-for ip in network_scan("192.168.1.0/24"):
-    for port in range(30000, 50000):  # 20,000 ports!
-        if port_open(ip, port):
-            connect_adb(ip, port)  # Takes hours, device may disconnect
-```
-
-**Attack Surface Reduction:**
-- Port 5555: 1 predictable target
-- Random port: 1 in 20,000 chance per attempt
-- Even with port scanning tools, takes significant time
-- User likely disconnects before scan completes
-
-### Threat Model
-
-**Protects Against:**
-- ✅ Automated port 5555 scanners
-- ✅ Opportunistic attacks on public networks
-- ✅ Accidental persistent connections
-
-**Does NOT Protect Against:**
-- ❌ Determined attacker on your network (they can scan all ports)
-- ❌ ARP spoofing / MITM attacks
-- ❌ Compromised router
-- ❌ Malicious apps on the device itself
-
-### Best Practices
-
-```bash
-# ✅ Good: Trusted home network
-wireless-adb connect
-# Work on project
-wireless-adb disconnect
-
-# ❌ Bad: Coffee shop Wi-Fi
-wireless-adb connect  # DON'T DO THIS
-
-# ✅ Good: Use VPN for untrusted networks
-sudo openvpn ~/my-vpn.ovpn
-wireless-adb connect  # Now both on VPN
-```
-
-### Additional Hardening (Advanced)
-
-For extra security, you can:
-
-1. **Firewall Rules:**
-   ```bash
-   # Linux: Only allow ADB from specific IP
-   sudo ufw allow from 192.168.1.145 to any port 30000:50000
-   
-   # Windows: Create inbound rule for Python.exe
-   ```
-
-2. **Port Knocking:**
-   Modify code to require a "knock sequence" before connecting
-
-3. **Certificate-Based Auth:**
-   ADB supports RSA key authentication (requires device modification)
-
-4. **Network Isolation:**
-   Use a dedicated IoT/dev network for Android devices
-
----
-
-## 🚀 Advanced Features
-
-### Custom Port Range
-
-Edit `wireless_adb.py`:
-```python
-class WirelessADBManager:
-    PORT_MIN = 40000  # Change this
-    PORT_MAX = 45000  # And this
-```
-
-### Auto-Reconnect on IP Change
-
-Add to your crontab (Linux):
-```bash
-*/5 * * * * /usr/local/bin/wireless-adb reconnect --quiet
-```
-
-### Integration with Other Tools
-
-```bash
-# Use in scripts
-wireless-adb connect -q && flutter run
-
-# Check status before deploying
-wireless-adb status | grep "Wireless Devices: None" && wireless-adb connect
-```
-
-### Multiple Profiles
-
-The tool automatically saves profiles for all devices you connect to:
-```bash
-wireless-adb status  # Shows all saved profiles
-```
+### 📱 Android Studio
+Once connected with `wireless-adb connect`, Android Studio will instantly detect your device in the **Running Devices / Target Device** dropdown!
 
 ---
 
 ## 🤝 Contributing
 
-Found a bug? Have a feature request? Contributions welcome!
+Contributions make the open-source community an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/EpicFeature`)
+3. Commit your Changes (`git commit -m 'feat: Add EpicFeature'`)
+4. Push to the Branch (`git push origin feature/EpicFeature`)
 5. Open a Pull Request
 
-### Development Setup
-
-```bash
-git clone https://github.com/yourusername/wireless-adb.git
-cd wireless-adb
-
-# Install in development mode
-pip install -e .
-
-# Run tests (if implemented)
-python -m pytest tests/
-```
-
 ---
 
-## 📝 License
+## 📜 License & Credits
 
-MIT License - see LICENSE file for details
+Distributed under the **MIT License**. See [`LICENSE`](file:///d:/download-chrome/WirelessADB-main/LICENSE) for more information.
 
----
-
-## 🙏 Acknowledgments
-
-- Android Debug Bridge (ADB) team at Google
-- The Android developer community
-- Built with security and convenience in mind
-
----
-
-## 📞 Support
-
-- **Issues:** [GitHub Issues](https://github.com/yourusername/wireless-adb/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/wireless-adb/discussions)
-- **Security:** Report vulnerabilities privately via email
-
----
-
-## 🎓 Learn More
-
-- [Android ADB Documentation](https://developer.android.com/studio/command-line/adb)
-- [USB Debugging Guide](https://developer.android.com/studio/debug/dev-options)
-- [Network Security Best Practices](https://owasp.org/www-project-mobile-security/)
-
----
-
-**Happy (Safe) Wireless Debugging! 🚀🔒**
+Crafted with ❤️ by **[Muhammad Taezeem Tariq](https://github.com/taezeem14)**. If you like this project, please consider giving it a ⭐ on GitHub!

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wireless-adb"
+version = "3.2.0"
+description = "⚡ Next-Gen Secure Wireless ADB Connection & Telemetry Suite for Android"
+readme = "README.md"
+authors = [{ name = "Muhammad Taezeem Tariq", email = "taezeemtariq@outlook.com" }]
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: System :: Hardware",
+]
+keywords = ["adb", "android", "wireless-adb", "debug", "android-development", "scrcpy", "developer-tools"]
+requires-python = ">=3.7"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/taezeem14/WirelessADB"
+Repository = "https://github.com/taezeem14/WirelessADB.git"
+Issues = "https://github.com/taezeem14/WirelessADB/issues"
+
+[project.scripts]
+wireless-adb = "wireless_adb:main"
+wadb = "wireless_adb:main"
