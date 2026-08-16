@@ -36,6 +36,15 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     except Exception:
         pass
 
+def safe_print(*args, **kwargs):
+    """Print with Unicode error protection for legacy Windows consoles."""
+    try:
+        print(*args, **kwargs)
+    except UnicodeEncodeError:
+        text = ' '.join(str(a) for a in args)
+        text = text.encode(sys.stdout.encoding or 'ascii', errors='replace').decode(sys.stdout.encoding or 'ascii')
+        print(text, **{k: v for k, v in kwargs.items() if k != 'end'})
+
 # Enable VT100 Escape Sequences on Windows
 if sys.platform == "win32":
     try:
@@ -198,7 +207,8 @@ class ADBWrapper:
             result = subprocess.run(
                 full_cmd,
                 capture_output=True,
-                text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=timeout,
                 check=check
             )
@@ -523,6 +533,9 @@ class WirelessADBManager:
                 print(f"  [{Colors.BOLD}{idx}{Colors.RESET}] {name} ({Colors.DARK_GRAY}{d['serial']}{Colors.RESET})")
             try:
                 choice = int(input(f"\n{Colors.BOLD}Select device [1-{len(devices)}]: {Colors.RESET}"))
+                if choice < 1 or choice > len(devices):
+                    print(f"{Colors.RED}  Invalid choice.{Colors.RESET}")
+                    return False
                 selected = devices[choice - 1]
             except Exception:
                 self.log(f"{Colors.RED}Invalid selection. Aborted.{Colors.RESET}")
@@ -618,7 +631,11 @@ class WirelessADBManager:
             ip = endpoint.split(":")[0]
             conn_port = input(f"\n{Colors.BOLD}Enter the main Wireless Debugging Port from phone screen: {Colors.RESET}").strip()
             if conn_port:
-                port = int(conn_port)
+                try:
+                    port = int(conn_port)
+                except ValueError:
+                    print(f"{Colors.RED}  [ERROR] Invalid port number: {conn_port}{Colors.RESET}")
+                    return False
                 self.log(f"Connecting to {ip}:{port}...")
                 if self.adb.connect_wireless(ip, port):
                     dev_name = self.adb.get_device_name(f"{ip}:{port}")
@@ -937,6 +954,7 @@ class WirelessADBManager:
                 self.log(f"\n{Colors.YELLOW}Watcher daemon stopped.{Colors.RESET}")
                 break
             except Exception as e:
+                print(f"\r  [!] Watch error: {e}", end='', flush=True)
                 time.sleep(interval)
 
     def interactive_menu(self) -> None:
