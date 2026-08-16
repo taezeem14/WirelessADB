@@ -278,4 +278,5 @@ Contributions make the open-source community an amazing place to learn, inspire,
 
 Distributed under the **MIT License**. See [`LICENSE`](file:///d:/download-chrome/WirelessADB-main/LICENSE) for more information.
 
-Crafted with ❤️ by **[Muhammad Taezeem Tariq](https://github.com/taezeem14)**. If you like this project, please consider giving it a ⭐ on GitHub!
+Crafted with ❤️ by **[Muhammad Taezeem Tariq](https://github.com/taezeem14)**. 
+If you like this project, please consider giving it a ⭐ on GitHub!
