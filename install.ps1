@@ -52,12 +52,18 @@ if (!(Test-Path $installDir)) {
 
 # 4. Fetch or Copy wireless_adb.py
 $targetScript = Join-Path $installDir 'wireless_adb.py'
-$localScript = Join-Path $PSScriptRoot 'wireless_adb.py'
+$hasLocal = $false
 
-if (Test-Path $localScript) {
-    Copy-Item -Path $localScript -Destination $targetScript -Force
-    Write-Host "[OK] Copied local wireless_adb.py to $targetScript" -ForegroundColor Green
-} else {
+if ($PSScriptRoot) {
+    $localScript = Join-Path $PSScriptRoot 'wireless_adb.py'
+    if (Test-Path $localScript) {
+        Copy-Item -Path $localScript -Destination $targetScript -Force
+        Write-Host "[OK] Copied local wireless_adb.py to $targetScript" -ForegroundColor Green
+        $hasLocal = $true
+    }
+}
+
+if (!$hasLocal) {
     Write-Host '[*] Downloading latest wireless_adb.py from GitHub...' -ForegroundColor Cyan
     $url = 'https://raw.githubusercontent.com/taezeem14/WirelessADB/main/wireless_adb.py'
     Invoke-WebRequest -Uri $url -OutFile $targetScript -UseBasicParsing
