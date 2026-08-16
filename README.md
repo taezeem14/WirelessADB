@@ -57,11 +57,14 @@ Vanilla `adb tcpip 5555` is **painful, slow, and insecure**:
 
 ## 🚀 One-Line Install
 
-### 🪟 Windows (PowerShell / CMD)
+### 🪟 Windows (PowerShell)
 ```powershell
-irm https://raw.githubusercontent.com/taezeem14/WirelessADB/main/install_windows.bat -OutFile install.bat; .\install.bat
+irm https://raw.githubusercontent.com/taezeem14/WirelessADB/main/install.ps1 | iex
 ```
-*Or clone and double-click `install_windows.bat`!*
+*Or in Command Prompt (CMD):*
+```cmd
+curl -fsSL https://raw.githubusercontent.com/taezeem14/WirelessADB/main/install_windows.bat -o install.bat && install.bat
+```
 
 ### 🐧 Linux (Bash / Zsh)
 ```bash
