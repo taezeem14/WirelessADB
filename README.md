@@ -67,11 +67,11 @@ Vanilla `adb tcpip 5555` is **painful, slow, and insecure**:
 
 ### 🪟 Windows (PowerShell — Recommended)
 ```powershell
-irm https://raw.githubusercontent.com/taezeem14/WirelessADB/main/install.ps1 | iex
+iex (irm https://raw.githubusercontent.com/taezeem14/WirelessADB/main/install.ps1)
 ```
-> **Tip:** If your execution policy requires it, use the explicit scriptblock pattern:
+> *Or using the pipeline syntax:*
 > ```powershell
-> & ([scriptblock]::Create((irm https://raw.githubusercontent.com/taezeem14/WirelessADB/main/install.ps1)))
+> irm https://raw.githubusercontent.com/taezeem14/WirelessADB/main/install.ps1 | iex
 > ```
 
 *Or in Command Prompt (CMD):*
