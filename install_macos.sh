@@ -31,7 +31,7 @@ if ! command -v adb &> /dev/null; then
     echo -e "${YELLOW}[WARN] ADB not detected in PATH!${NC}"
     if command -v brew &> /dev/null; then
         echo "Installing Android Platform Tools via Homebrew..."
-        brew install --cask android-platform-tools
+        brew install android-platform-tools
     else
         echo "Please install Homebrew (https://brew.sh) or Android Platform Tools manually."
     fi
@@ -47,15 +47,24 @@ if [ ! -w "$INSTALL_DIR" ]; then
     mkdir -p "$INSTALL_DIR"
 fi
 
-cp wireless_adb.py "$INSTALL_DIR/wireless-adb"
-chmod +x "$INSTALL_DIR/wireless-adb"
-ln -sf "$INSTALL_DIR/wireless-adb" "$INSTALL_DIR/wadb"
+TARGET_BIN="$INSTALL_DIR/wireless-adb"
+if [ -f "wireless_adb.py" ]; then
+    cp wireless_adb.py "$TARGET_BIN"
+    echo -e "${GREEN}[OK]${NC} Copied local wireless_adb.py to $TARGET_BIN"
+else
+    echo -e "${CYAN}[*] Downloading latest wireless_adb.py from GitHub...${NC}"
+    curl -fsSL https://raw.githubusercontent.com/taezeem14/WirelessADB/main/wireless_adb.py -o "$TARGET_BIN"
+    echo -e "${GREEN}[OK]${NC} Downloaded payload to $TARGET_BIN"
+fi
 
-echo -e "${GREEN}[OK]${NC} Installed binary: ${BOLD}$INSTALL_DIR/wireless-adb${NC}"
+chmod +x "$TARGET_BIN"
+ln -sf "$TARGET_BIN" "$INSTALL_DIR/wadb"
+
+echo -e "${GREEN}[OK]${NC} Installed binary: ${BOLD}$TARGET_BIN${NC}"
 echo -e "${GREEN}[OK]${NC} Created alias   : ${BOLD}$INSTALL_DIR/wadb${NC}"
 
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-    echo -e "${YELLOW}[NOTE] Add $INSTALL_DIR to your ~/.zshrc:${NC}"
+    echo -e "${YELLOW}[NOTE] Add $INSTALL_DIR to your ~/.zshrc or ~/.bash_profile:${NC}"
     echo -e "  ${CYAN}export PATH=\"$INSTALL_DIR:\$PATH\"${NC}"
 fi
 

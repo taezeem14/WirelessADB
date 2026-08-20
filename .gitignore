@@ -19,6 +19,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Virtual Environments
 .env
@@ -27,9 +28,32 @@ env/
 venv/
 ENV/
 
+# Testing & Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
 # OS Specific
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Config
+# Output media & temp
+screenshot_*.png
+screenrecord_*.mp4
+*.log
+wadb_*.png
+wadb_*.mp4
+
+# Config & State
 .wireless_adb/

@@ -26,6 +26,7 @@ if ! command -v python3 &> /dev/null; then
     echo "  Ubuntu/Debian : sudo apt install -y python3 python3-pip"
     echo "  Fedora/RHEL   : sudo dnf install -y python3"
     echo "  Arch Linux    : sudo pacman -S --noconfirm python"
+    echo "  Alpine Linux  : sudo apk add python3"
     exit 1
 fi
 echo -e "${GREEN}[OK]${NC} Python 3 detected: $(python3 --version)"
@@ -44,6 +45,8 @@ if ! command -v adb &> /dev/null; then
             sudo dnf install -y android-tools
         elif command -v zypper &> /dev/null; then
             sudo zypper install -y android-tools
+        elif command -v apk &> /dev/null; then
+            sudo apk add android-tools
         else
             echo -e "${RED}Could not detect supported package manager. Please install adb manually.${NC}"
         fi
@@ -64,14 +67,23 @@ else
     mkdir -p "$INSTALL_DIR"
 fi
 
-# Copy binary
-cp wireless_adb.py "$INSTALL_DIR/wireless-adb"
-chmod +x "$INSTALL_DIR/wireless-adb"
+# Fetch or Copy wireless_adb.py
+TARGET_BIN="$INSTALL_DIR/wireless-adb"
+if [ -f "wireless_adb.py" ]; then
+    cp wireless_adb.py "$TARGET_BIN"
+    echo -e "${GREEN}[OK]${NC} Copied local wireless_adb.py to $TARGET_BIN"
+else
+    echo -e "${CYAN}[*] Downloading latest wireless_adb.py from GitHub...${NC}"
+    curl -fsSL https://raw.githubusercontent.com/taezeem14/WirelessADB/main/wireless_adb.py -o "$TARGET_BIN"
+    echo -e "${GREEN}[OK]${NC} Downloaded payload to $TARGET_BIN"
+fi
+
+chmod +x "$TARGET_BIN"
 
 # Create shortcut alias wadb
-ln -sf "$INSTALL_DIR/wireless-adb" "$INSTALL_DIR/wadb"
+ln -sf "$TARGET_BIN" "$INSTALL_DIR/wadb"
 
-echo -e "${GREEN}[OK]${NC} Installed binary: ${BOLD}$INSTALL_DIR/wireless-adb${NC}"
+echo -e "${GREEN}[OK]${NC} Installed binary: ${BOLD}$TARGET_BIN${NC}"
 echo -e "${GREEN}[OK]${NC} Created alias   : ${BOLD}$INSTALL_DIR/wadb${NC}"
 
 # Check PATH

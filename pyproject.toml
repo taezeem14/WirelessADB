@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wireless-adb"
-version = "3.2.0"
-description = "⚡ Next-Gen Secure Wireless ADB Connection & Telemetry Suite for Android"
+version = "4.0.0"
+description = "⚡ Next-Gen Secure Wireless ADB Connection, File Management, Telemetry & Mirroring Suite for Android"
 readme = "README.md"
 authors = [{ name = "Muhammad Taezeem Tariq", email = "taezeemtariq@outlook.com" }]
 license = { text = "MIT" }
@@ -16,6 +16,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
@@ -27,7 +28,7 @@ classifiers = [
     "Topic :: Software Development :: Debuggers",
     "Topic :: System :: Hardware",
 ]
-keywords = ["adb", "android", "wireless-adb", "debug", "android-development", "scrcpy", "developer-tools"]
+keywords = ["adb", "android", "wireless-adb", "debug", "android-development", "scrcpy", "screenshot", "logcat", "screenrecord", "developer-tools"]
 requires-python = ">=3.7"
 dependencies = []
 

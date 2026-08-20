@@ -2,8 +2,8 @@ from setuptools import setup
 
 setup(
     name="wireless-adb",
-    version="3.2.0",
-    description="⚡ Next-Gen Secure Wireless ADB Connection & Telemetry Suite for Android",
+    version="4.0.0",
+    description="⚡ Next-Gen Secure Wireless ADB Connection, File Management, Telemetry & Mirroring Suite for Android",
     py_modules=["wireless_adb"],
     python_requires=">=3.7",
     entry_points={

@@ -19,31 +19,40 @@ import ipaddress
 import subprocess
 import argparse
 import shutil
+import pathlib
 from pathlib import Path
 from typing import Optional, Tuple, Dict, List, Any
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 from enum import Enum
+from datetime import datetime
+
+# Python 3.7+ Enforcement
+if sys.version_info < (3, 7):
+    sys.exit(f"[FATAL] Python 3.7+ is required. Running on {sys.version.split()[0]}.")
 
 # Version Info
-__version__ = "3.2.0"
+__version__ = "4.0.0"
 __tool_name__ = "WirelessADB"
 
 # Ensure UTF-8 output encoding across Windows / Linux / macOS
-if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
-def safe_print(*args, **kwargs):
-    """Print with Unicode error protection for legacy Windows consoles."""
+
+def safe_print(*args, **kwargs) -> None:
+    """Print with Unicode error fallback protection for legacy Windows consoles."""
     try:
         print(*args, **kwargs)
     except UnicodeEncodeError:
-        text = ' '.join(str(a) for a in args)
-        text = text.encode(sys.stdout.encoding or 'ascii', errors='replace').decode(sys.stdout.encoding or 'ascii')
-        print(text, **{k: v for k, v in kwargs.items() if k != 'end'})
+        enc = sys.stdout.encoding or "ascii" if sys.stdout else "ascii"
+        text = " ".join(str(a) for a in args)
+        text = text.encode(enc, errors="replace").decode(enc)
+        print(text, **{k: v for k, v in kwargs.items() if k != "end"})
+
 
 # Enable VT100 Escape Sequences on Windows
 if sys.platform == "win32":
@@ -63,13 +72,9 @@ class Colors:
     RESET = "\033[0m"
     BOLD = "\033[1m"
     DIM = "\033[2m"
-    ITALIC = "\033[3m"
     UNDERLINE = "\033[4m"
-    BLINK = "\033[5m"
-    REVERSE = "\033[7m"
 
     # Foreground Neon Palette
-    BLACK = "\033[30m"
     RED = "\033[91m"
     GREEN = "\033[92m"
     YELLOW = "\033[93m"
@@ -90,11 +95,10 @@ class Colors:
     # Backgrounds
     BG_DARK = "\033[48;5;234m"
     BG_GREEN = "\033[48;5;22m"
-    BG_RED = "\033[48;5;52m"
     BG_BLUE = "\033[48;5;17m"
 
     @classmethod
-    def disable(cls):
+    def disable(cls) -> None:
         """Strip all ANSI codes for plain terminals or file pipes"""
         for attr in list(cls.__dict__.keys()):
             if not attr.startswith("__") and isinstance(getattr(cls, attr), str):
@@ -118,12 +122,19 @@ class DeviceProfile:
     android_version: str = "Unknown"
     battery_level: str = "Unknown"
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DeviceProfile":
+        """Safely instantiate DeviceProfile ignoring extraneous keys."""
+        valid_fields = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered)
+
 
 class UI:
     """ASCII art, banners, tables, and stylized visual output"""
 
     @staticmethod
-    def banner():
+    def banner() -> str:
         logo = f"""{Colors.NEON_CYAN}
   ██╗    ██╗██╗██████╗ ███████╗██╗     ███████╗███████╗███████╗ █████╗ ██████╗ ██████╗ 
   ██║    ██║██║██╔══██╗██╔════╝██║     ██╔════╝██╔════╝██╔════╝██╔══██╗██╔══██╗██╔══██╗
@@ -137,14 +148,18 @@ class UI:
 
     @staticmethod
     def box(title: str, lines: List[str], color: str = Colors.NEON_CYAN) -> str:
-        width = max([len(title) + 4] + [len(re.sub(r'\033\[[0-9;]*m', '', l)) for l in lines] + [50])
-        border_top = f"{color}╭─ {Colors.BOLD}{title}{Colors.RESET}{color} " + "─" * (width - len(title) - 3) + f"╮{Colors.RESET}"
-        border_bot = f"{color}╰" + "─" * (width) + f"╯{Colors.RESET}"
+        plain_title = re.sub(r'\033\[[0-9;]*m', '', title)
+        plain_lens = [len(re.sub(r'\033\[[0-9;]*m', '', l)) for l in lines]
+        width = max([len(plain_title) + 4] + plain_lens + [54])
+        
+        top_dashes = max(0, width - len(plain_title) - 3)
+        border_top = f"{color}╭─ {Colors.BOLD}{title}{Colors.RESET}{color} " + ("─" * top_dashes) + f"╮{Colors.RESET}"
+        border_bot = f"{color}╰" + ("─" * width) + f"╯{Colors.RESET}"
         
         output = [border_top]
         for line in lines:
             plain_len = len(re.sub(r'\033\[[0-9;]*m', '', line))
-            padding = " " * (width - plain_len - 2)
+            padding = " " * max(0, width - plain_len - 2)
             output.append(f"{color}│{Colors.RESET} {line}{padding} {color}│{Colors.RESET}")
         output.append(border_bot)
         return "\n".join(output)
@@ -174,15 +189,26 @@ class ADBWrapper:
             return adb
 
         # Check standard Windows / Mac / Linux paths
-        search_paths = [
-            os.path.expandvars(r"%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe"),
-            r"C:\platform-tools\adb.exe",
-            r"C:\Android\platform-tools\adb.exe",
-            os.path.expanduser("~/Library/Android/sdk/platform-tools/adb"),
-            os.path.expanduser("~/Android/Sdk/platform-tools/adb"),
-            "/usr/bin/adb",
-            "/usr/local/bin/adb",
-        ]
+        search_paths = []
+        if sys.platform == "win32":
+            search_paths.extend([
+                os.path.expandvars(r"%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe"),
+                r"C:\platform-tools\adb.exe",
+                r"C:\Android\platform-tools\adb.exe",
+            ])
+        elif sys.platform == "darwin":
+            search_paths.extend([
+                os.path.expanduser("~/Library/Android/sdk/platform-tools/adb"),
+                "/opt/homebrew/bin/adb",
+                "/usr/local/bin/adb",
+            ])
+        else:
+            search_paths.extend([
+                os.path.expanduser("~/Android/Sdk/platform-tools/adb"),
+                "/usr/bin/adb",
+                "/usr/local/bin/adb",
+            ])
+
         for p in search_paths:
             if os.path.exists(p):
                 return p
@@ -198,10 +224,10 @@ class ADBWrapper:
             return False, str(e)
 
     def run(self, cmd: List[str], check: bool = False, timeout: int = 30) -> subprocess.CompletedProcess:
-        """Execute ADB subprocess command"""
+        """Execute ADB subprocess command with UTF-8 encoding"""
         full_cmd = [self.adb_path] + cmd
         if self.verbose:
-            print(f"{Colors.DARK_GRAY}[EXEC] {' '.join(full_cmd)}{Colors.RESET}")
+            safe_print(f"{Colors.DARK_GRAY}[EXEC] {' '.join(full_cmd)}{Colors.RESET}")
 
         try:
             result = subprocess.run(
@@ -213,20 +239,24 @@ class ADBWrapper:
                 check=check
             )
             if self.verbose and result.stdout.strip():
-                print(f"{Colors.DARK_GRAY}[STDOUT] {result.stdout.strip()}{Colors.RESET}")
+                safe_print(f"{Colors.DARK_GRAY}[STDOUT] {result.stdout.strip()}{Colors.RESET}")
             return result
         except subprocess.TimeoutExpired:
             if self.verbose:
-                print(f"{Colors.RED}[TIMEOUT] Command timed out after {timeout}s: {' '.join(full_cmd)}{Colors.RESET}")
+                safe_print(f"{Colors.RED}[TIMEOUT] Command timed out after {timeout}s: {' '.join(full_cmd)}{Colors.RESET}")
             raise
         except subprocess.CalledProcessError as e:
             if self.verbose:
-                print(f"{Colors.RED}[STDERR] {e.stderr.strip()}{Colors.RESET}")
+                safe_print(f"{Colors.RED}[STDERR] {e.stderr.strip()}{Colors.RESET}")
             raise
 
-    def get_devices(self) -> List[Dict[str, str]]:
+    def get_devices(self) -> List[Dict[str, Any]]:
         """Fetch all connected devices with serial, type and state"""
-        res = self.run(["devices", "-l"])
+        try:
+            res = self.run(["devices", "-l"])
+        except Exception:
+            return []
+
         devices = []
         for line in res.stdout.strip().split("\n")[1:]:
             line = line.strip()
@@ -236,7 +266,8 @@ class ADBWrapper:
             if len(parts) >= 2:
                 serial = parts[0]
                 state = parts[1]
-                is_wireless = ":" in serial
+                # Robust regex detection for IP:Port wireless serial
+                is_wireless = bool(re.match(r'^\d+\.\d+\.\d+\.\d+:\d+$', serial))
                 
                 # Extract extra properties
                 model = "Android Device"
@@ -259,90 +290,98 @@ class ADBWrapper:
 
     def get_device_ip(self, serial: str) -> Optional[str]:
         """Multi-strategy Wi-Fi IP address resolution"""
-        # Strategy 1: wlan0 ip addr show
-        res = self.run(["-s", serial, "shell", "ip", "addr", "show", "wlan0"])
-        match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+)', res.stdout)
-        if match:
-            ip = match.group(1)
-            if not ip.startswith("127."):
-                return ip
-
-        # Strategy 2: ip route get 8.8.8.8
-        res = self.run(["-s", serial, "shell", "ip", "route", "get", "8.8.8.8"])
-        match = re.search(r'src\s+(\d+\.\d+\.\d+\.\d+)', res.stdout)
-        if match:
-            return match.group(1)
-
-        # Strategy 3: ifconfig wlan0
-        res = self.run(["-s", serial, "shell", "ifconfig", "wlan0"])
-        match = re.search(r'inet addr:(\d+\.\d+\.\d+\.\d+)', res.stdout)
-        if match:
-            return match.group(1)
-
-        # Strategy 4: getprop dhcp.wlan0.ipaddress
-        res = self.run(["-s", serial, "shell", "getprop", "dhcp.wlan0.ipaddress"])
-        ip = res.stdout.strip()
-        if re.match(r'^\d+\.\d+\.\d+\.\d+$', ip):
-            return ip
+        strategies = [
+            ["-s", serial, "shell", "ip", "addr", "show", "wlan0"],
+            ["-s", serial, "shell", "ip", "route", "get", "8.8.8.8"],
+            ["-s", serial, "shell", "ifconfig", "wlan0"],
+            ["-s", serial, "shell", "getprop", "dhcp.wlan0.ipaddress"],
+            ["-s", serial, "shell", "ip", "-f", "inet", "addr", "show"],
+        ]
+        
+        for cmd in strategies:
+            try:
+                res = self.run(cmd, timeout=5)
+                matches = re.findall(r'inet\s+(\d+\.\d+\.\d+\.\d+)|src\s+(\d+\.\d+\.\d+\.\d+)|inet addr:(\d+\.\d+\.\d+\.\d+)', res.stdout)
+                for group in matches:
+                    for ip in group:
+                        if ip and not ip.startswith("127.") and not ip.startswith("0.") and not ip.startswith("169.254."):
+                            return ip
+                # Direct getprop single IP match
+                direct_ip = res.stdout.strip()
+                if re.match(r'^\d+\.\d+\.\d+\.\d+$', direct_ip) and not direct_ip.startswith("127."):
+                    return direct_ip
+            except Exception:
+                continue
 
         return None
 
     def get_device_name(self, serial: str) -> str:
         """Fetch model & manufacturer name"""
-        res_m = self.run(["-s", serial, "shell", "getprop", "ro.product.manufacturer"])
-        res_n = self.run(["-s", serial, "shell", "getprop", "ro.product.model"])
-        man = res_m.stdout.strip().title()
-        mod = res_n.stdout.strip()
-        if man and mod and not mod.lower().startswith(man.lower()):
-            return f"{man} {mod}"
-        return mod or man or "Android Device"
+        try:
+            res_m = self.run(["-s", serial, "shell", "getprop", "ro.product.manufacturer"], timeout=5)
+            res_n = self.run(["-s", serial, "shell", "getprop", "ro.product.model"], timeout=5)
+            man = res_m.stdout.strip().title()
+            mod = res_n.stdout.strip()
+            if man and mod and not mod.lower().startswith(man.lower()):
+                return f"{man} {mod}"
+            return mod or man or "Android Device"
+        except Exception:
+            return "Android Device"
 
     def get_android_version(self, serial: str) -> str:
         """Fetch Android OS release version"""
-        res = self.run(["-s", serial, "shell", "getprop", "ro.build.version.release"])
-        sdk = self.run(["-s", serial, "shell", "getprop", "ro.build.version.sdk"])
-        ver = res.stdout.strip()
-        sdk_ver = sdk.stdout.strip()
-        if ver and sdk_ver:
-            return f"Android {ver} (API {sdk_ver})"
-        return ver or "Android"
+        try:
+            res = self.run(["-s", serial, "shell", "getprop", "ro.build.version.release"], timeout=5)
+            sdk = self.run(["-s", serial, "shell", "getprop", "ro.build.version.sdk"], timeout=5)
+            ver = res.stdout.strip()
+            sdk_ver = sdk.stdout.strip()
+            if ver and sdk_ver:
+                return f"Android {ver} (API {sdk_ver})"
+            return ver or "Android"
+        except Exception:
+            return "Android"
 
     def get_battery_info(self, serial: str) -> Dict[str, Any]:
         """Fetch battery percentage, charging state, temperature"""
-        res = self.run(["-s", serial, "shell", "dumpsys", "battery"])
         data = {"level": "Unknown", "status": "Unknown", "temp": "Unknown", "health": "Good"}
-        for line in res.stdout.strip().split("\n"):
-            line = line.strip()
-            if line.startswith("level:"):
-                data["level"] = f"{line.split(':')[1].strip()}%"
-            elif line.startswith("status:"):
-                val = line.split(':')[1].strip()
-                statuses = {"1": "Unknown", "2": "Charging ⚡", "3": "Discharging 🔋", "4": "Not charging", "5": "Full 🟢"}
-                data["status"] = statuses.get(val, "Active")
-            elif line.startswith("temperature:"):
-                try:
-                    temp_c = float(line.split(':')[1].strip()) / 10.0
-                    data["temp"] = f"{temp_c:.1f}°C"
-                except Exception:
-                    pass
+        try:
+            res = self.run(["-s", serial, "shell", "dumpsys", "battery"], timeout=5)
+            for line in res.stdout.strip().split("\n"):
+                line = line.strip()
+                if line.startswith("level:"):
+                    data["level"] = f"{line.split(':')[1].strip()}%"
+                elif line.startswith("status:"):
+                    val = line.split(':')[1].strip()
+                    statuses = {"1": "Unknown", "2": "Charging", "3": "Discharging", "4": "Not charging", "5": "Full"}
+                    data["status"] = statuses.get(val, "Active")
+                elif line.startswith("temperature:"):
+                    try:
+                        temp_c = float(line.split(':')[1].strip()) / 10.0
+                        data["temp"] = f"{temp_c:.1f}°C"
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         return data
 
     def get_wifi_telemetry(self, serial: str) -> Dict[str, str]:
         """Retrieve Wi-Fi link speed, RSSI and SSID"""
-        res = self.run(["-s", serial, "shell", "dumpsys", "wifi"])
         telemetry = {"ssid": "Unknown", "link_speed": "Unknown", "rssi": "Unknown"}
-        
-        ssid_match = re.search(r'SSID:\s*"?([^",\n]+)"?', res.stdout)
-        if ssid_match:
-            telemetry["ssid"] = ssid_match.group(1)
+        try:
+            res = self.run(["-s", serial, "shell", "dumpsys", "wifi"], timeout=6)
+            ssid_match = re.search(r'SSID:\s*"?([^",\n]+)"?', res.stdout)
+            if ssid_match:
+                telemetry["ssid"] = ssid_match.group(1)
 
-        speed_match = re.search(r'Link speed:\s*(\d+Mbps)', res.stdout, re.IGNORECASE)
-        if speed_match:
-            telemetry["link_speed"] = speed_match.group(1)
+            speed_match = re.search(r'Link speed:\s*(\d+Mbps)', res.stdout, re.IGNORECASE)
+            if speed_match:
+                telemetry["link_speed"] = speed_match.group(1)
 
-        rssi_match = re.search(r'RSSI:\s*(-?\d+)', res.stdout)
-        if rssi_match:
-            telemetry["rssi"] = f"{rssi_match.group(1)} dBm"
+            rssi_match = re.search(r'RSSI:\s*(-?\d+)', res.stdout)
+            if rssi_match:
+                telemetry["rssi"] = f"{rssi_match.group(1)} dBm"
+        except Exception:
+            pass
 
         return telemetry
 
@@ -352,9 +391,8 @@ class ADBWrapper:
             if sys.platform == "win32":
                 cmd = ["ping", "-n", str(count), "-w", "1000", ip]
             else:
-                cmd = ["ping", "-c", str(count), "-W", "1", ip]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
-            # Parse average latency
+                cmd = ["ping", "-c", str(count), "-W", "2", ip]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
             match = re.search(r'Average = (\d+)ms|avg.*?=\s*[\d.]+/([\d.]+)/', res.stdout)
             if match:
                 lat = match.group(1) or match.group(2)
@@ -366,10 +404,10 @@ class ADBWrapper:
     def enable_tcpip(self, serial: str, port: int) -> bool:
         """Switch target device into TCP/IP listening mode"""
         try:
-            self.run(["-s", serial, "tcpip", str(port)], check=True)
+            self.run(["-s", serial, "tcpip", str(port)], check=True, timeout=10)
             time.sleep(1.5)
             return True
-        except subprocess.CalledProcessError:
+        except Exception:
             return False
 
     def pair_wireless(self, ip_port: str, pairing_code: str) -> bool:
@@ -402,9 +440,9 @@ class ADBWrapper:
         """Disconnect wireless device or all wireless targets"""
         try:
             if target:
-                self.run(["disconnect", target], check=True)
+                self.run(["disconnect", target], check=True, timeout=5)
             else:
-                self.run(["disconnect"], check=True)
+                self.run(["disconnect"], check=True, timeout=5)
             return True
         except Exception:
             return False
@@ -412,7 +450,7 @@ class ADBWrapper:
     def usb_mode(self, serial: str) -> bool:
         """Reset device back to USB mode"""
         try:
-            self.run(["-s", serial, "usb"], check=True)
+            self.run(["-s", serial, "usb"], check=True, timeout=5)
             return True
         except Exception:
             return False
@@ -431,6 +469,92 @@ class ADBWrapper:
         except Exception:
             return []
 
+    def take_screenshot(self, serial: str, dest_path: str) -> bool:
+        """Capture device screenshot and save as PNG"""
+        try:
+            full_cmd = [self.adb_path, "-s", serial, "exec-out", "screencap", "-p"]
+            with open(dest_path, "wb") as f:
+                res = subprocess.run(full_cmd, stdout=f, stderr=subprocess.PIPE, timeout=15)
+                if res.returncode == 0 and os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
+                    return True
+        except Exception:
+            pass
+
+        # Fallback via /sdcard/
+        try:
+            remote_tmp = "/sdcard/wadb_screenshot.png"
+            self.run(["-s", serial, "shell", "screencap", "-p", remote_tmp], check=True, timeout=10)
+            self.run(["-s", serial, "pull", remote_tmp, dest_path], check=True, timeout=15)
+            self.run(["-s", serial, "shell", "rm", "-f", remote_tmp], timeout=5)
+            return os.path.exists(dest_path) and os.path.getsize(dest_path) > 0
+        except Exception:
+            return False
+
+    def record_screen(self, serial: str, dest_path: str, duration_sec: int = 10) -> bool:
+        """Record screen video and pull to host"""
+        remote_tmp = "/sdcard/wadb_record.mp4"
+        try:
+            safe_print(f"{Colors.YELLOW}⏺ Recording screen on {serial} for {duration_sec}s...{Colors.RESET}")
+            self.run(["-s", serial, "shell", "screenrecord", "--time-limit", str(duration_sec), remote_tmp], timeout=duration_sec + 10)
+            time.sleep(1)
+            safe_print(f"{Colors.NEON_CYAN}⬇ Pulling recording to {dest_path}...{Colors.RESET}")
+            self.run(["-s", serial, "pull", remote_tmp, dest_path], check=True, timeout=30)
+            self.run(["-s", serial, "shell", "rm", "-f", remote_tmp], timeout=5)
+            return os.path.exists(dest_path) and os.path.getsize(dest_path) > 0
+        except Exception as e:
+            safe_print(f"{Colors.RED}❌ Screen record failed: {e}{Colors.RESET}")
+            return False
+
+    def push_file(self, serial: str, local_path: str, remote_path: str) -> Tuple[bool, str]:
+        """Push a file to device"""
+        try:
+            res = self.run(["-s", serial, "push", local_path, remote_path], check=True, timeout=120)
+            return True, res.stdout.strip()
+        except Exception as e:
+            return False, str(e)
+
+    def pull_file(self, serial: str, remote_path: str, local_path: str) -> Tuple[bool, str]:
+        """Pull a file from device"""
+        try:
+            res = self.run(["-s", serial, "pull", remote_path, local_path], check=True, timeout=120)
+            return True, res.stdout.strip()
+        except Exception as e:
+            return False, str(e)
+
+    def list_packages(self, serial: str, system: bool = False, filter_kw: Optional[str] = None) -> List[str]:
+        """List installed packages with optional filtering"""
+        cmd = ["-s", serial, "shell", "pm", "list", "packages"]
+        if system:
+            cmd.append("-s")
+        else:
+            cmd.append("-3")  # 3rd party user apps by default
+        
+        try:
+            res = self.run(cmd, timeout=15)
+            pkgs = []
+            for line in res.stdout.strip().split("\n"):
+                if line.startswith("package:"):
+                    pkg = line.replace("package:", "").strip()
+                    if filter_kw:
+                        if filter_kw.lower() in pkg.lower():
+                            pkgs.append(pkg)
+                    else:
+                        pkgs.append(pkg)
+            return sorted(pkgs)
+        except Exception:
+            return []
+
+    def reboot(self, serial: str, mode: Optional[str] = None) -> bool:
+        """Reboot device (normal, bootloader, recovery)"""
+        cmd = ["-s", serial, "reboot"]
+        if mode:
+            cmd.append(mode)
+        try:
+            self.run(cmd, check=True, timeout=15)
+            return True
+        except Exception:
+            return False
+
 
 class WirelessADBManager:
     """Core Manager Orchestrating Profiles, Connections, and CLI Workflows"""
@@ -439,6 +563,7 @@ class WirelessADBManager:
     PORT_MAX = 50000
     CONFIG_DIR = Path.home() / ".wireless_adb"
     CONFIG_FILE = CONFIG_DIR / "profiles.json"
+    PID_FILE = CONFIG_DIR / "watcher.pid"
 
     def __init__(self, verbose: bool = False, quiet: bool = False):
         self.verbose = verbose
@@ -447,11 +572,21 @@ class WirelessADBManager:
         self.adb = ADBWrapper(verbose=verbose)
         self.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    def log(self, msg: str, level: LogLevel = LogLevel.NORMAL, color: str = Colors.WHITE):
+    def log(self, msg: str, level: LogLevel = LogLevel.NORMAL, color: str = Colors.WHITE) -> None:
         if self.log_level.value >= level.value:
-            print(f"{color}{msg}{Colors.RESET}")
+            safe_print(f"{color}{msg}{Colors.RESET}")
 
     def generate_port(self) -> int:
+        """Generate an available dynamic high TCP port"""
+        for _ in range(50):
+            port = random.randint(self.PORT_MIN, self.PORT_MAX)
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.1)
+                    if s.connect_ex(("127.0.0.1", port)) != 0:
+                        return port
+            except Exception:
+                return port
         return random.randint(self.PORT_MIN, self.PORT_MAX)
 
     def _save_profile(self, profile: DeviceProfile) -> None:
@@ -462,7 +597,7 @@ class WirelessADBManager:
                 json.dump(profiles, f, indent=2)
         except Exception as e:
             if self.verbose:
-                print(f"{Colors.YELLOW}[WARN] Could not save profile: {e}{Colors.RESET}")
+                safe_print(f"{Colors.YELLOW}[WARN] Could not save profile: {e}{Colors.RESET}")
 
     def _load_all_profiles(self) -> Dict[str, Any]:
         if not self.CONFIG_FILE.exists():
@@ -474,16 +609,21 @@ class WirelessADBManager:
             return {}
 
     def get_host_ip(self) -> Optional[str]:
-        """Detect local host IP address"""
+        """Detect local host IPv4 address"""
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(0.5)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.settimeout(0.5)
+                s.connect(("8.8.8.8", 80))
+                return s.getsockname()[0]
         except Exception:
-            return None
+            try:
+                host = socket.gethostname()
+                ip = socket.gethostbyname(host)
+                if not ip.startswith("127."):
+                    return ip
+            except Exception:
+                pass
+        return None
 
     def check_subnet(self, device_ip: str) -> bool:
         host_ip = self.get_host_ip()
@@ -492,12 +632,25 @@ class WirelessADBManager:
                 d_net = ipaddress.ip_network(f"{device_ip}/24", strict=False)
                 h_net = ipaddress.ip_network(f"{host_ip}/24", strict=False)
                 if d_net != h_net:
-                    self.log(f"{Colors.YELLOW}⚠️  Subnet Mismatch: Device is on {device_ip} but Host is on {host_ip}!{Colors.RESET}")
+                    self.log(f"{Colors.YELLOW}⚠️  Subnet Warning: Device is on {device_ip} but Host is on {host_ip}!{Colors.RESET}")
                     self.log(f"   Ensure both device and host are connected to the same Wi-Fi SSID / VLAN.")
                     return False
             except Exception:
                 pass
         return True
+
+    def _get_active_target(self, target: Optional[str] = None) -> Optional[str]:
+        """Resolve target device or auto-select active wireless/USB device"""
+        if target:
+            return target
+        devices = self.adb.get_devices()
+        wireless = [d["serial"] for d in devices if d["is_wireless"] and d["state"] == "device"]
+        if wireless:
+            return wireless[0]
+        usb = [d["serial"] for d in devices if not d["is_wireless"] and d["state"] == "device"]
+        if usb:
+            return usb[0]
+        return None
 
     # ─────────────────────────────────────────────────────────────
     # Command Implementations
@@ -505,11 +658,12 @@ class WirelessADBManager:
 
     def connect(self, custom_port: Optional[int] = None) -> bool:
         """Automatic USB-to-Wireless handshake flow"""
-        print(UI.banner())
+        safe_print(UI.banner())
         self.log(f"{Colors.NEON_CYAN}▶ Step 1/5:{Colors.RESET} Detecting USB-connected Android devices...")
         
-        devices = [d for d in self.adb.get_devices() if not d["is_wireless"] and d["state"] == "device"]
-        unauthorized = [d for d in self.adb.get_devices() if d["state"] == "unauthorized"]
+        all_devs = self.adb.get_devices()
+        devices = [d for d in all_devs if not d["is_wireless"] and d["state"] == "device"]
+        unauthorized = [d for d in all_devs if d["state"] == "unauthorized"]
 
         if unauthorized:
             self.log(f"\n{Colors.RED}❌ Device Unauthorized:{Colors.RESET} Check your phone screen and tap 'Always allow from this computer'.\n")
@@ -517,7 +671,7 @@ class WirelessADBManager:
 
         if not devices:
             self.log(f"\n{Colors.RED}❌ No USB-Connected Android Devices Found!{Colors.RESET}")
-            print(UI.box("Troubleshooting Checklist", [
+            safe_print(UI.box("Troubleshooting Checklist", [
                 "1. Connect phone to PC using a USB data cable.",
                 "2. Enable Developer Options -> USB Debugging on phone.",
                 "3. Unlock phone and approve the 'Allow USB Debugging' RSA prompt.",
@@ -530,11 +684,11 @@ class WirelessADBManager:
             self.log(f"{Colors.NEON_GREEN}Found {len(devices)} USB devices:{Colors.RESET}")
             for idx, d in enumerate(devices, 1):
                 name = self.adb.get_device_name(d["serial"])
-                print(f"  [{Colors.BOLD}{idx}{Colors.RESET}] {name} ({Colors.DARK_GRAY}{d['serial']}{Colors.RESET})")
+                safe_print(f"  [{Colors.BOLD}{idx}{Colors.RESET}] {name} ({Colors.DARK_GRAY}{d['serial']}{Colors.RESET})")
             try:
                 choice = int(input(f"\n{Colors.BOLD}Select device [1-{len(devices)}]: {Colors.RESET}"))
                 if choice < 1 or choice > len(devices):
-                    print(f"{Colors.RED}  Invalid choice.{Colors.RESET}")
+                    safe_print(f"{Colors.RED}  Choice must be between 1 and {len(devices)}.{Colors.RESET}")
                     return False
                 selected = devices[choice - 1]
             except Exception:
@@ -567,20 +721,22 @@ class WirelessADBManager:
         self.log(f"\n{Colors.NEON_CYAN}▶ Step 4/5:{Colors.RESET} Switching device into TCP/IP mode on port {port}...")
         if not self.adb.enable_tcpip(serial, port):
             self.log(f"{Colors.RED}❌ Failed to enable TCP/IP mode on device.{Colors.RESET}")
+            self.log(f"   Ensure USB debugging remains allowed on your device.")
             return False
         self.log(f"  {Colors.NEON_GREEN}✔ TCP/IP Mode Active{Colors.RESET}")
 
         # Step 5: Connect
-        self.log(f"\n{Colors.NEON_CYAN}▶ Step 5/5:{Colors.RESET} Establishing wireless handshake to {device_ip}:{port}...")
+        target_endpoint = f"{device_ip}:{port}"
+        self.log(f"\n{Colors.NEON_CYAN}▶ Step 5/5:{Colors.RESET} Establishing wireless handshake to {target_endpoint}...")
         if not self.adb.connect_wireless(device_ip, port):
             self.log(f"{Colors.RED}❌ Wireless connection handshake failed.{Colors.RESET}")
-            self.log(f"   Check your router's AP client isolation and PC firewall settings.")
+            self.log(f"   Check router AP client isolation and PC firewall settings.")
             return False
 
         # Save profile
         bat = self.adb.get_battery_info(serial)
         prof = DeviceProfile(
-            serial=serial,
+            serial=target_endpoint,
             ip=device_ip,
             port=port,
             last_connected=time.time(),
@@ -591,28 +747,28 @@ class WirelessADBManager:
         self._save_profile(prof)
 
         # Success Card
-        print("\n" + UI.box("🎉 WIRELESS ADB CONNECTED SUCCESSFULLY", [
+        safe_print("\n" + UI.box("🎉 WIRELESS ADB CONNECTED SUCCESSFULLY", [
             f"Device       : {dev_name} ({android_ver})",
-            f"Target       : {device_ip}:{port}",
+            f"Target       : {target_endpoint}",
             f"Battery      : {bat.get('level')} ({bat.get('status')})",
             f"Status       : {UI.status_tag(True)}",
             "",
             f"✨ {Colors.BOLD}You can now UNPLUG your USB cable!{Colors.RESET}",
             f"💡 Run '{Colors.NEON_CYAN}wireless-adb status{Colors.RESET}' or '{Colors.NEON_CYAN}wireless-adb mirror{Colors.RESET}' anytime."
         ], Colors.NEON_GREEN))
-        print()
+        safe_print()
         return True
 
     def pair(self, endpoint: Optional[str] = None, code: Optional[str] = None) -> bool:
         """Android 11+ Zero-Cable Wi-Fi Pairing Flow"""
-        print(UI.banner())
-        print(UI.box("📱 ANDROID 11+ WIRELESS PAIRING (NO CABLE NEEDED)", [
+        safe_print(UI.banner())
+        safe_print(UI.box("📱 ANDROID 11+ WIRELESS PAIRING (NO CABLE NEEDED)", [
             "1. On phone: Go to Developer Options -> Wireless Debugging.",
             "2. Turn on 'Wireless Debugging'.",
             "3. Tap 'Pair device with pairing code'.",
             "4. Enter the Wi-Fi pairing IP:port and 6-digit code shown on screen."
         ], Colors.NEON_PURPLE))
-        print()
+        safe_print()
 
         if not endpoint:
             endpoint = input(f"{Colors.BOLD}Enter Pairing IP & Port (e.g. 192.168.1.15:38472): {Colors.RESET}").strip()
@@ -623,18 +779,18 @@ class WirelessADBManager:
             self.log(f"{Colors.RED}Pairing endpoint and code are required.{Colors.RESET}")
             return False
 
-        self.log(f"\n{Colors.NEON_CYAN}▶ Pairing with {endpoint} using code {code}...{Colors.RESET}")
+        self.log(f"\n{Colors.NEON_CYAN}▶ Pairing with {endpoint}...{Colors.RESET}")
         if self.adb.pair_wireless(endpoint, code):
             self.log(f"{Colors.NEON_GREEN}✔ Pairing Successful!{Colors.RESET}")
             
-            # Extract IP and prompt for the actual connection port (often different in Android 11)
+            # Extract IP and prompt for the actual connection port
             ip = endpoint.split(":")[0]
             conn_port = input(f"\n{Colors.BOLD}Enter the main Wireless Debugging Port from phone screen: {Colors.RESET}").strip()
             if conn_port:
                 try:
                     port = int(conn_port)
                 except ValueError:
-                    print(f"{Colors.RED}  [ERROR] Invalid port number: {conn_port}{Colors.RESET}")
+                    safe_print(f"{Colors.RED}  [ERROR] Invalid port number: {conn_port}{Colors.RESET}")
                     return False
                 self.log(f"Connecting to {ip}:{port}...")
                 if self.adb.connect_wireless(ip, port):
@@ -648,6 +804,9 @@ class WirelessADBManager:
                         device_name=dev_name
                     ))
                     return True
+                else:
+                    self.log(f"{Colors.RED}❌ Connection to {ip}:{port} failed.{Colors.RESET}")
+                    return False
             return True
         else:
             self.log(f"{Colors.RED}❌ Pairing failed. Ensure the 6-digit dialog is still open on phone and retry.{Colors.RESET}")
@@ -655,7 +814,7 @@ class WirelessADBManager:
 
     def status(self) -> bool:
         """Rich interactive status dashboard with telemetry"""
-        print(UI.banner())
+        safe_print(UI.banner())
         devices = self.adb.get_devices()
         
         usb_devs = [d for d in devices if not d["is_wireless"]]
@@ -693,17 +852,18 @@ class WirelessADBManager:
             lines.append(f"{Colors.BOLD}SAVED DEVICE PROFILES ({len(profiles)}){Colors.RESET}")
             for s, data in list(profiles.items())[-4:]:
                 last_t = time.strftime("%Y-%m-%d %H:%M", time.localtime(data.get("last_connected", 0)))
-                lines.append(f"  ⭐ {data.get('device_name', 'Android')} ({data.get('ip')}:{data.get('port')}) — Last seen {last_t}")
+                alias_tag = f" [{data.get('alias')}]" if data.get("alias") else ""
+                lines.append(f"  ⭐ {data.get('device_name', 'Android')}{alias_tag} ({data.get('ip')}:{data.get('port')}) — Last seen {last_t}")
 
-        print(UI.box("📊 WIRELESS ADB LIVE DASHBOARD", lines, Colors.NEON_CYAN))
-        print()
+        safe_print(UI.box("📊 WIRELESS ADB LIVE DASHBOARD", lines, Colors.NEON_CYAN))
+        safe_print()
         return True
 
-    def info(self, target: Optional[str] = None) -> bool:
+    def info(self, target: Optional[str] = None, json_export: bool = False) -> bool:
         """Deep hardware and network telemetry for target device"""
         devices = self.adb.get_devices()
         if not devices:
-            self.log(f"{Colors.RED}No connected devices found.{Colors.RESET}")
+            self.log(f"{Colors.RED}No connected devices found. Run 'wireless-adb connect' first.{Colors.RESET}")
             return False
 
         serial = target or devices[0]["serial"]
@@ -714,10 +874,29 @@ class WirelessADBManager:
         ip = self.adb.get_device_ip(serial) or (serial.split(":")[0] if ":" in serial else "Unknown")
         ping = self.adb.ping_device(ip) if ip != "Unknown" else None
 
-        # Fetch extra specs
         cpu_abi = self.adb.run(["-s", serial, "shell", "getprop", "ro.product.cpu.abi"]).stdout.strip()
         screen_size = self.adb.run(["-s", serial, "shell", "wm", "size"]).stdout.strip().replace("Physical size: ", "")
         screen_density = self.adb.run(["-s", serial, "shell", "wm", "density"]).stdout.strip().replace("Physical density: ", "")
+
+        telemetry_data = {
+            "device_name": dev_name,
+            "serial": serial,
+            "android_version": android_ver,
+            "cpu_abi": cpu_abi,
+            "display": f"{screen_size} ({screen_density} dpi)",
+            "battery": bat,
+            "wifi": {
+                "ip": ip,
+                "ssid": wifi.get("ssid"),
+                "link_speed": wifi.get("link_speed"),
+                "rssi": wifi.get("rssi"),
+                "ping_ms": ping
+            }
+        }
+
+        if json_export:
+            safe_print(json.dumps(telemetry_data, indent=2))
+            return True
 
         lines = [
             f"{Colors.BOLD}HARDWARE SPECS{Colors.RESET}",
@@ -738,22 +917,27 @@ class WirelessADBManager:
             f"  Signal RSSI    : {wifi.get('rssi')}",
             f"  Ping Latency   : {f'{ping:.1f} ms' if ping is not None else 'N/A'}",
         ]
-        print(UI.box(f"🔍 DEVICE TELEMETRY: {dev_name}", lines, Colors.NEON_GREEN))
+        safe_print(UI.box(f"🔍 DEVICE TELEMETRY: {dev_name}", lines, Colors.NEON_GREEN))
         return True
 
     def reconnect(self, alias_or_serial: Optional[str] = None) -> bool:
-        """Reconnect to last known profile or specific device"""
+        """Reconnect to last known profile or specific alias/endpoint"""
         profiles = self._load_all_profiles()
         if not profiles:
             self.log(f"{Colors.RED}❌ No saved profiles found! Connect once via USB first.{Colors.RESET}")
             return False
 
-        if alias_or_serial and alias_or_serial in profiles:
-            target_data = profiles[alias_or_serial]
-        else:
-            # Latest
-            latest_serial = max(profiles.keys(), key=lambda k: profiles[k].get("last_connected", 0))
-            target_data = profiles[latest_serial]
+        target_data = None
+        if alias_or_serial:
+            # Check by key or alias
+            for k, p in profiles.items():
+                if k == alias_or_serial or p.get("alias") == alias_or_serial or p.get("ip") == alias_or_serial:
+                    target_data = p
+                    break
+
+        if not target_data:
+            latest_key = max(profiles.keys(), key=lambda k: profiles[k].get("last_connected", 0))
+            target_data = profiles[latest_key]
 
         dev_name = target_data.get("device_name", "Android Device")
         ip = target_data["ip"]
@@ -763,7 +947,7 @@ class WirelessADBManager:
         if self.adb.connect_wireless(ip, port):
             self.log(f"{Colors.NEON_GREEN}✔ Reconnected successfully!{Colors.RESET}")
             target_data["last_connected"] = time.time()
-            self._save_profile(DeviceProfile(**target_data))
+            self._save_profile(DeviceProfile.from_dict(target_data))
             return True
         else:
             self.log(f"{Colors.RED}❌ Reconnection failed.{Colors.RESET}")
@@ -795,7 +979,7 @@ class WirelessADBManager:
 
     def scan_network(self) -> bool:
         """Scan local mDNS and subnet for active ADB instances"""
-        print(UI.banner())
+        safe_print(UI.banner())
         self.log(f"{Colors.NEON_CYAN}🔍 Scanning local network and mDNS for Android ADB services...{Colors.RESET}\n")
         
         mdns_services = self.adb.discover_mdns()
@@ -803,30 +987,35 @@ class WirelessADBManager:
             lines = [f"{Colors.BOLD}DISCOVERED MDNS ADB SERVICES{Colors.RESET}"]
             for s in mdns_services:
                 lines.append(f"  📡 {s['name']} - {s['service']} ({s['addr']})")
-            print(UI.box("MDNS Discovery Results", lines, Colors.NEON_PURPLE))
-            print()
+            safe_print(UI.box("MDNS Discovery Results", lines, Colors.NEON_PURPLE))
+            safe_print()
         else:
             self.log(f"  {Colors.DARK_GRAY}No mDNS ADB services broadcasting.{Colors.RESET}")
 
-        # Quick subnet probe on common ADB ports
+        # Subnet probe on common ADB ports with proper socket closure
         host_ip = self.get_host_ip()
         if host_ip:
             base_ip = ".".join(host_ip.split(".")[:3])
-            self.log(f"  Scanning local subnet {base_ip}.1/24 (timeout 0.2s)...")
+            self.log(f"  Scanning local subnet {base_ip}.1/24 (timeout 0.04s per port)...")
             found = []
             for i in range(1, 255):
                 target_ip = f"{base_ip}.{i}"
                 if target_ip == host_ip:
                     continue
-                # Try socket connect on 5555
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(0.04)
-                if s.connect_ex((target_ip, 5555)) == 0:
-                    found.append(f"{target_ip}:5555")
-                s.close()
+                s = None
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(0.04)
+                    if s.connect_ex((target_ip, 5555)) == 0:
+                        found.append(f"{target_ip}:5555")
+                except Exception:
+                    pass
+                finally:
+                    if s:
+                        s.close()
 
             if found:
-                print(UI.box("Subnet Port 5555 Matches", [f"  🎯 Found open ADB on {addr}" for addr in found], Colors.NEON_GREEN))
+                safe_print(UI.box("Subnet Port 5555 Matches", [f"  🎯 Found open ADB on {addr}" for addr in found], Colors.NEON_GREEN))
             else:
                 self.log(f"  {Colors.NEON_GREEN}✔ No insecure port 5555 instances exposed on local subnet.{Colors.RESET}")
 
@@ -840,18 +1029,18 @@ class WirelessADBManager:
             self.log(f"   Install scrcpy from https://github.com/Genymobile/scrcpy to enable mirroring.")
             return False
 
-        devices = self.adb.get_devices()
-        wireless_devs = [d["serial"] for d in devices if d["is_wireless"]]
-        serial = target or (wireless_devs[0] if wireless_devs else (devices[0]["serial"] if devices else None))
-
+        serial = self._get_active_target(target)
         if not serial:
-            self.log(f"{Colors.RED}No active devices available for mirroring.{Colors.RESET}")
+            self.log(f"{Colors.RED}No active devices available for mirroring. Run 'wireless-adb connect' first.{Colors.RESET}")
             return False
 
         self.log(f"{Colors.NEON_GREEN}🚀 Launching scrcpy mirror for {serial}...{Colors.RESET}")
         cmd = [scrcpy, "-s", serial, "--max-fps", "60", "--video-bit-rate", "8M", "--stay-awake"]
         try:
-            subprocess.Popen(cmd)
+            creationflags = 0
+            if sys.platform == "win32":
+                creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+            subprocess.Popen(cmd, creationflags=creationflags)
             return True
         except Exception as e:
             self.log(f"{Colors.RED}Failed to launch scrcpy: {e}{Colors.RESET}")
@@ -859,10 +1048,9 @@ class WirelessADBManager:
 
     def interactive_shell(self, target: Optional[str] = None) -> bool:
         """Open interactive wireless shell"""
-        devices = self.adb.get_devices()
-        serial = target or (devices[0]["serial"] if devices else None)
+        serial = self._get_active_target(target)
         if not serial:
-            self.log(f"{Colors.RED}No active device found.{Colors.RESET}")
+            self.log(f"{Colors.RED}No active device found. Connect a device first.{Colors.RESET}")
             return False
         
         self.log(f"{Colors.NEON_GREEN}⚡ Opening interactive wireless shell on {serial}...{Colors.RESET}\n")
@@ -875,10 +1063,9 @@ class WirelessADBManager:
             self.log(f"{Colors.RED}❌ File not found: {apk_path}{Colors.RESET}")
             return False
         
-        devices = self.adb.get_devices()
-        serial = target or (devices[0]["serial"] if devices else None)
+        serial = self._get_active_target(target)
         if not serial:
-            self.log(f"{Colors.RED}No active device found.{Colors.RESET}")
+            self.log(f"{Colors.RED}No active device found. Connect a device first.{Colors.RESET}")
             return False
 
         self.log(f"{Colors.NEON_CYAN}📦 Installing {os.path.basename(apk_path)} on {serial}...{Colors.RESET}")
@@ -890,9 +1077,200 @@ class WirelessADBManager:
             self.log(f"{Colors.RED}❌ Installation failed: {res.stdout.strip()}{Colors.RESET}")
             return False
 
+    # ─────────────────────────────────────────────────────────────
+    # NEW V4.0 FEATURES
+    # ─────────────────────────────────────────────────────────────
+
+    def screenshot(self, output_path: Optional[str] = None, target: Optional[str] = None) -> bool:
+        """📸 Capture screenshot from connected Android device"""
+        serial = self._get_active_target(target)
+        if not serial:
+            self.log(f"{Colors.RED}❌ No active device found. Connect a device first.{Colors.RESET}")
+            return False
+
+        if not output_path:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = f"screenshot_{timestamp}.png"
+
+        self.log(f"{Colors.NEON_CYAN}📸 Capturing screen from {serial}...{Colors.RESET}")
+        if self.adb.take_screenshot(serial, output_path):
+            abs_path = os.path.abspath(output_path)
+            self.log(f"{Colors.NEON_GREEN}✔ Screenshot saved to: {Colors.BOLD}{abs_path}{Colors.RESET}")
+            return True
+        else:
+            self.log(f"{Colors.RED}❌ Failed to capture screenshot.{Colors.RESET}")
+            return False
+
+    def record(self, output_path: Optional[str] = None, duration: int = 15, target: Optional[str] = None) -> bool:
+        """🎥 Record screen video from device"""
+        serial = self._get_active_target(target)
+        if not serial:
+            self.log(f"{Colors.RED}❌ No active device found.{Colors.RESET}")
+            return False
+
+        if not output_path:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = f"screenrecord_{timestamp}.mp4"
+
+        if self.adb.record_screen(serial, output_path, duration_sec=duration):
+            abs_path = os.path.abspath(output_path)
+            self.log(f"{Colors.NEON_GREEN}✔ Screen recording saved to: {Colors.BOLD}{abs_path}{Colors.RESET}")
+            return True
+        return False
+
+    def push(self, local_path: str, remote_path: str, target: Optional[str] = None) -> bool:
+        """📂 Push file to device"""
+        if not os.path.exists(local_path):
+            self.log(f"{Colors.RED}❌ Local file not found: {local_path}{Colors.RESET}")
+            return False
+
+        serial = self._get_active_target(target)
+        if not serial:
+            self.log(f"{Colors.RED}❌ No active device found.{Colors.RESET}")
+            return False
+
+        self.log(f"{Colors.NEON_CYAN}⬆ Pushing {local_path} ➔ {remote_path}...{Colors.RESET}")
+        ok, msg = self.adb.push_file(serial, local_path, remote_path)
+        if ok:
+            self.log(f"{Colors.NEON_GREEN}✔ File pushed successfully!{Colors.RESET}")
+            return True
+        else:
+            self.log(f"{Colors.RED}❌ Push failed: {msg}{Colors.RESET}")
+            return False
+
+    def pull(self, remote_path: str, local_path: Optional[str] = None, target: Optional[str] = None) -> bool:
+        """📂 Pull file from device"""
+        if not local_path:
+            local_path = os.path.basename(remote_path.rstrip("/")) or "pulled_file"
+
+        serial = self._get_active_target(target)
+        if not serial:
+            self.log(f"{Colors.RED}❌ No active device found.{Colors.RESET}")
+            return False
+
+        self.log(f"{Colors.NEON_CYAN}⬇ Pulling {remote_path} ➔ {local_path}...{Colors.RESET}")
+        ok, msg = self.adb.pull_file(serial, remote_path, local_path)
+        if ok:
+            self.log(f"{Colors.NEON_GREEN}✔ File pulled successfully to {os.path.abspath(local_path)}!{Colors.RESET}")
+            return True
+        else:
+            self.log(f"{Colors.RED}❌ Pull failed: {msg}{Colors.RESET}")
+            return False
+
+    def apps(self, system: bool = False, filter_kw: Optional[str] = None, target: Optional[str] = None) -> bool:
+        """📱 List installed applications"""
+        serial = self._get_active_target(target)
+        if not serial:
+            self.log(f"{Colors.RED}❌ No active device found.{Colors.RESET}")
+            return False
+
+        app_type = "System & 3rd-Party" if system else "3rd-Party User"
+        self.log(f"{Colors.NEON_CYAN}📱 Fetching {app_type} apps from {serial}...{Colors.RESET}")
+        pkgs = self.adb.list_packages(serial, system=system, filter_kw=filter_kw)
+        
+        if not pkgs:
+            self.log(f"{Colors.YELLOW}No packages found matching criteria.{Colors.RESET}")
+            return True
+
+        lines = [f"{Colors.BOLD}INSTALLED PACKAGES ({len(pkgs)}){Colors.RESET}"]
+        for p in pkgs[:40]:
+            lines.append(f"  📦 {p}")
+        if len(pkgs) > 40:
+            lines.append(f"  {Colors.DARK_GRAY}... and {len(pkgs) - 40} more packages.{Colors.RESET}")
+
+        safe_print(UI.box(f"📱 APPS: {serial}", lines, Colors.NEON_CYAN))
+        return True
+
+    def logcat(self, tag: Optional[str] = None, save_file: Optional[str] = None, target: Optional[str] = None) -> bool:
+        """📋 Stream live logcat logs"""
+        serial = self._get_active_target(target)
+        if not serial:
+            self.log(f"{Colors.RED}❌ No active device found.{Colors.RESET}")
+            return False
+
+        cmd = [self.adb.adb_path, "-s", serial, "logcat", "-v", "time"]
+        if tag:
+            cmd.extend(["-s", f"{tag}:*"])
+
+        self.log(f"{Colors.NEON_GREEN}📋 Streaming live logcat on {serial} (Ctrl+C to stop)...{Colors.RESET}\n")
+        try:
+            if save_file:
+                with open(save_file, "w", encoding="utf-8") as f:
+                    safe_print(f"Logging to file: {save_file}")
+                    proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT)
+                    proc.wait()
+            else:
+                subprocess.run(cmd)
+        except KeyboardInterrupt:
+            safe_print(f"\n{Colors.YELLOW}Logcat stream stopped.{Colors.RESET}")
+        return True
+
+    def reboot_device(self, mode: Optional[str] = None, target: Optional[str] = None) -> bool:
+        """🔄 Reboot connected device"""
+        serial = self._get_active_target(target)
+        if not serial:
+            self.log(f"{Colors.RED}❌ No active device found.{Colors.RESET}")
+            return False
+
+        mode_str = mode if mode else "system"
+        confirm = input(f"{Colors.YELLOW}Are you sure you want to reboot {serial} into '{mode_str}'? [y/N]: {Colors.RESET}").strip().lower()
+        if confirm != "y":
+            self.log("Reboot cancelled.")
+            return False
+
+        self.log(f"{Colors.NEON_CYAN}🔄 Rebooting {serial} ({mode_str})...{Colors.RESET}")
+        if self.adb.reboot(serial, mode=mode):
+            self.log(f"{Colors.NEON_GREEN}✔ Reboot signal sent successfully.{Colors.RESET}")
+            return True
+        else:
+            self.log(f"{Colors.RED}❌ Reboot command failed.{Colors.RESET}")
+            return False
+
+    def favorites(self, alias: Optional[str] = None, target: Optional[str] = None, delete: Optional[str] = None) -> bool:
+        """⭐ Manage saved profiles & aliases"""
+        profiles = self._load_all_profiles()
+        
+        if delete:
+            if delete in profiles:
+                del profiles[delete]
+                with open(self.CONFIG_FILE, "w", encoding="utf-8") as f:
+                    json.dump(profiles, f, indent=2)
+                self.log(f"{Colors.NEON_GREEN}✔ Deleted profile for {delete}{Colors.RESET}")
+                return True
+            else:
+                self.log(f"{Colors.RED}❌ Profile {delete} not found.{Colors.RESET}")
+                return False
+
+        if alias and target:
+            if target in profiles:
+                profiles[target]["alias"] = alias
+                with open(self.CONFIG_FILE, "w", encoding="utf-8") as f:
+                    json.dump(profiles, f, indent=2)
+                self.log(f"{Colors.NEON_GREEN}✔ Assigned alias '{alias}' to {target}{Colors.RESET}")
+                return True
+            else:
+                self.log(f"{Colors.RED}❌ Target {target} not found in saved profiles.{Colors.RESET}")
+                return False
+
+        # List all favorites
+        safe_print(UI.banner())
+        if not profiles:
+            self.log(f"{Colors.DARK_GRAY}No saved profiles. Connect a device to create one.{Colors.RESET}")
+            return True
+
+        lines = [f"{Colors.BOLD}SAVED DEVICE FAVORITES ({len(profiles)}){Colors.RESET}"]
+        for key, p in profiles.items():
+            alias_tag = f" [Alias: {Colors.NEON_PURPLE}{p.get('alias')}{Colors.RESET}]" if p.get("alias") else ""
+            last_t = time.strftime("%Y-%m-%d %H:%M", time.localtime(p.get("last_connected", 0)))
+            lines.append(f"  ⭐ {Colors.BOLD}{p.get('device_name', 'Android')}{Colors.RESET}{alias_tag}")
+            lines.append(f"     └─ Endpoint: {p.get('ip')}:{p.get('port')} | Last: {last_t}")
+        
+        safe_print(UI.box("⭐ DEVICE PROFILES & FAVORITES", lines, Colors.NEON_PURPLE))
+        return True
+
     def doctor(self) -> bool:
         """Pre-flight comprehensive environment diagnostics"""
-        print(UI.banner())
+        safe_print(UI.banner())
         lines = []
         
         # 1. Python Check
@@ -915,7 +1293,7 @@ class WirelessADBManager:
         if scrcpy:
             lines.append(f"✔ scrcpy Mirroring     : Installed ({scrcpy})")
         else:
-            lines.append(f"○ scrcpy Mirroring     : Not found (optional, recommended)")
+            lines.append(f"○ scrcpy Mirroring     : Not found (optional, recommended for screen mirror)")
 
         # 5. Connected Devices
         devs = self.adb.get_devices()
@@ -925,42 +1303,72 @@ class WirelessADBManager:
         profiles = self._load_all_profiles()
         lines.append(f"✔ Saved Profiles       : {len(profiles)} registered in ~/.wireless_adb/profiles.json")
 
-        print(UI.box("🩺 SYSTEM & ENVIRONMENT DIAGNOSTICS", lines, Colors.NEON_CYAN))
-        print()
+        safe_print(UI.box("🩺 SYSTEM & ENVIRONMENT DIAGNOSTICS", lines, Colors.NEON_CYAN))
+        safe_print()
         return True
 
     def watch_daemon(self, interval: int = 5) -> None:
-        """Continuous auto-reconnect watcher daemon"""
-        print(UI.banner())
+        """Continuous auto-reconnect watcher daemon with singleton lock"""
+        safe_print(UI.banner())
+        
+        # Singleton check
+        try:
+            if self.PID_FILE.exists():
+                try:
+                    old_pid = int(self.PID_FILE.read_text().strip())
+                    if sys.platform == "win32":
+                        # Windows process check
+                        res = subprocess.run(["tasklist", "/FI", f"PID eq {old_pid}"], capture_output=True, text=True)
+                        if str(old_pid) in res.stdout:
+                            safe_print(f"{Colors.YELLOW}⚠️ Watcher daemon is already running (PID {old_pid}).{Colors.RESET}")
+                            return
+                    else:
+                        os.kill(old_pid, 0)
+                        safe_print(f"{Colors.YELLOW}⚠️ Watcher daemon is already running (PID {old_pid}).{Colors.RESET}")
+                        return
+                except Exception:
+                    pass
+            self.PID_FILE.write_text(str(os.getpid()))
+        except Exception:
+            pass
+
         self.log(f"{Colors.NEON_CYAN}👁️ WirelessADB Watcher Daemon Started (Polling every {interval}s)...{Colors.RESET}")
         self.log(f"   Press Ctrl+C to terminate.\n")
 
-        while True:
+        try:
+            while True:
+                try:
+                    devices = self.adb.get_devices()
+                    wireless_active = any(d["is_wireless"] and d["state"] == "device" for d in devices)
+                    
+                    if not wireless_active:
+                        profiles = self._load_all_profiles()
+                        if profiles:
+                            latest = max(profiles.keys(), key=lambda k: profiles[k].get("last_connected", 0))
+                            p = profiles[latest]
+                            t_now = time.strftime("%H:%M:%S")
+                            safe_print(f"[{t_now}] {Colors.YELLOW}⚡ Connection dropped. Reconnecting to {p.get('device_name')} ({p['ip']}:{p['port']})...{Colors.RESET}")
+                            if self.adb.connect_wireless(p["ip"], p["port"]):
+                                safe_print(f"[{t_now}] {Colors.NEON_GREEN}✔ Restored connection to {p.get('device_name')}!{Colors.RESET}")
+                    time.sleep(interval)
+                except KeyboardInterrupt:
+                    raise
+                except Exception as e:
+                    safe_print(f"\r  [!] Watch error: {e}", end='', flush=True)
+                    time.sleep(interval)
+        except KeyboardInterrupt:
+            self.log(f"\n{Colors.YELLOW}Watcher daemon stopped.{Colors.RESET}")
+        finally:
             try:
-                devices = self.adb.get_devices()
-                wireless_active = any(d["is_wireless"] and d["state"] == "device" for d in devices)
-                
-                if not wireless_active:
-                    profiles = self._load_all_profiles()
-                    if profiles:
-                        latest = max(profiles.keys(), key=lambda k: profiles[k].get("last_connected", 0))
-                        p = profiles[latest]
-                        t_now = time.strftime("%H:%M:%S")
-                        print(f"[{t_now}] {Colors.YELLOW}⚡ Connection dropped. Attempting auto-reconnect to {p['device_name']} ({p['ip']}:{p['port']})...{Colors.RESET}")
-                        if self.adb.connect_wireless(p["ip"], p["port"]):
-                            print(f"[{t_now}] {Colors.NEON_GREEN}✔ Restored connection to {p['device_name']}!{Colors.RESET}")
-                time.sleep(interval)
-            except KeyboardInterrupt:
-                self.log(f"\n{Colors.YELLOW}Watcher daemon stopped.{Colors.RESET}")
-                break
-            except Exception as e:
-                print(f"\r  [!] Watch error: {e}", end='', flush=True)
-                time.sleep(interval)
+                if self.PID_FILE.exists():
+                    self.PID_FILE.unlink()
+            except Exception:
+                pass
 
     def interactive_menu(self) -> None:
         """Interactive Terminal Menu for one-touch navigation"""
         while True:
-            print(UI.banner())
+            safe_print(UI.banner())
             devices = self.adb.get_devices()
             w_count = sum(1 for d in devices if d["is_wireless"])
             u_count = sum(1 for d in devices if not d["is_wireless"])
@@ -972,19 +1380,27 @@ class WirelessADBManager:
                 "",
                 f"  [{Colors.BOLD}1{Colors.RESET}] ⚡ Connect USB Device to Wireless (Auto High-Port)",
                 f"  [{Colors.BOLD}2{Colors.RESET}] 📱 Pair via Android 11+ Wi-Fi (No Cable Needed)",
-                f"  [{Colors.BOLD}3{Colors.RESET}] 📊 Show Live Status Dashboard & Latency",
+                f"  [{Colors.BOLD}3{Colors.RESET}] 📊 Live Status Dashboard & Latency HUD",
                 f"  [{Colors.BOLD}4{Colors.RESET}] 🔄 Quick Reconnect to Last Device",
                 f"  [{Colors.BOLD}5{Colors.RESET}] 🔍 Deep Device Telemetry (Battery, CPU, Wi-Fi)",
-                f"  [{Colors.BOLD}6{Colors.RESET}] 🚀 Launch scrcpy Screen Mirror",
-                f"  [{Colors.BOLD}7{Colors.RESET}] 💻 Open Wireless Terminal Shell",
-                f"  [{Colors.BOLD}8{Colors.RESET}] 📡 Scan Network for ADB Devices",
-                f"  [{Colors.BOLD}9{Colors.RESET}] 🩺 Run Doctor Health Diagnostics",
+                f"  [{Colors.BOLD}6{Colors.RESET}] 📸 Capture Device Screenshot",
+                f"  [{Colors.BOLD}7{Colors.RESET}] 🎥 Record Device Screen Video",
+                f"  [{Colors.BOLD}8{Colors.RESET}] 🚀 Launch scrcpy 60FPS Screen Mirror",
+                f"  [{Colors.BOLD}9{Colors.RESET}] 💻 Open Wireless Terminal Shell",
+                f"  [{Colors.BOLD}A{Colors.RESET}] 📦 Install APK Wireless",
+                f"  [{Colors.BOLD}B{Colors.RESET}] 📂 Push / Pull File Transfer",
+                f"  [{Colors.BOLD}C{Colors.RESET}] 📱 List Installed Apps & Packages",
+                f"  [{Colors.BOLD}D{Colors.RESET}] 📋 Live Logcat Streamer",
+                f"  [{Colors.BOLD}E{Colors.RESET}] 📡 Scan Network for ADB Devices",
+                f"  [{Colors.BOLD}F{Colors.RESET}] ⭐ Manage Device Favorites & Aliases",
+                f"  [{Colors.BOLD}G{Colors.RESET}] 🔄 Reboot Device (System / Bootloader / Recovery)",
+                f"  [{Colors.BOLD}H{Colors.RESET}] 🩺 Run Doctor Health Diagnostics",
                 f"  [{Colors.BOLD}0{Colors.RESET}] 🔌 Disconnect & Clean Up All Sessions",
                 f"  [{Colors.BOLD}q{Colors.RESET}] 🚪 Quit"
             ]
-            print(UI.box("⚡ WIRELESS ADB CONTROL CENTER", menu_lines, Colors.NEON_CYAN))
+            safe_print(UI.box("⚡ WIRELESS ADB CONTROL CENTER", menu_lines, Colors.NEON_CYAN))
             
-            choice = input(f"\n{Colors.BOLD}Select an action [0-9, q]: {Colors.RESET}").strip().lower()
+            choice = input(f"\n{Colors.BOLD}Select an action [0-9, A-H, q]: {Colors.RESET}").strip().lower()
             if choice == '1':
                 self.connect()
             elif choice == '2':
@@ -996,12 +1412,45 @@ class WirelessADBManager:
             elif choice == '5':
                 self.info()
             elif choice == '6':
-                self.mirror()
+                self.screenshot()
             elif choice == '7':
-                self.interactive_shell()
+                self.record()
             elif choice == '8':
-                self.scan_network()
+                self.mirror()
             elif choice == '9':
+                self.interactive_shell()
+            elif choice == 'a':
+                apk = input(f"{Colors.BOLD}Enter APK file path: {Colors.RESET}").strip()
+                if apk:
+                    self.install_apk(apk)
+            elif choice == 'b':
+                mode = input(f"{Colors.BOLD}Transfer mode - [1] Push to device, [2] Pull from device: {Colors.RESET}").strip()
+                if mode == '1':
+                    loc = input(f"Local file path: ").strip()
+                    rem = input(f"Remote destination path (e.g. /sdcard/): ").strip()
+                    if loc and rem:
+                        self.push(loc, rem)
+                elif mode == '2':
+                    rem = input(f"Remote file path on device: ").strip()
+                    loc = input(f"Local destination path (optional): ").strip()
+                    if rem:
+                        self.pull(rem, loc if loc else None)
+            elif choice == 'c':
+                kw = input(f"{Colors.BOLD}Filter by keyword (press Enter for all): {Colors.RESET}").strip()
+                self.apps(filter_kw=kw if kw else None)
+            elif choice == 'd':
+                tag = input(f"{Colors.BOLD}Filter by tag (press Enter for all): {Colors.RESET}").strip()
+                self.logcat(tag=tag if tag else None)
+            elif choice == 'e':
+                self.scan_network()
+            elif choice == 'f':
+                self.favorites()
+            elif choice == 'g':
+                m = input(f"{Colors.BOLD}Reboot mode - [1] Normal, [2] Bootloader, [3] Recovery: {Colors.RESET}").strip()
+                mode_map = {"1": None, "2": "bootloader", "3": "recovery"}
+                if m in mode_map:
+                    self.reboot_device(mode=mode_map[m])
+            elif choice == 'h':
                 self.doctor()
             elif choice == '0':
                 self.disconnect_all()
@@ -1014,7 +1463,7 @@ class WirelessADBManager:
             input(f"\n{Colors.DARK_GRAY}Press Enter to return to menu...{Colors.RESET}")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         prog="wireless-adb",
         description="⚡ WirelessADB - Next-Gen Secure Wireless ADB Connection & Telemetry Suite",
@@ -1025,7 +1474,12 @@ Quick Examples:
   wireless-adb connect           Auto-switch USB device to secure wireless port
   wireless-adb pair              Android 11+ zero-wire Wi-Fi pairing
   wireless-adb reconnect         Instantly reconnect to last active device
+  wireless-adb screenshot        Capture device screenshot to PNG
+  wireless-adb record            Record screen video from device
   wireless-adb mirror            One-click low-latency scrcpy screen mirroring
+  wireless-adb apps              List installed user applications
+  wireless-adb push <src> <dst>  Push file to device
+  wireless-adb pull <src> [dst]  Pull file from device
   wireless-adb status            Display live telemetry and battery meters
   wireless-adb doctor            Run pre-flight environment checks
   wireless-adb disconnect        Safely tear down all wireless sessions
@@ -1039,20 +1493,33 @@ Quick Examples:
         choices=[
             "menu", "ui", "connect", "pair", "status", "info",
             "reconnect", "disconnect", "scan", "mirror", "shell",
-            "install", "doctor", "watch"
+            "install", "doctor", "watch", "screenshot", "record",
+            "push", "pull", "apps", "logcat", "reboot", "favorites"
         ],
         help="Command to execute (default: interactive menu)"
     )
 
+    # General Options
     parser.add_argument("-p", "--port", type=int, help="Specify custom TCP port")
     parser.add_argument("-s", "--serial", type=str, help="Target specific device serial or IP")
-    parser.add_argument("-f", "--file", type=str, help="APK file path for install command")
+    parser.add_argument("-f", "--file", type=str, help="File path for install/screenshot/push/pull")
+    parser.add_argument("-o", "--output", type=str, help="Output destination path")
+    parser.add_argument("--remote", type=str, help="Remote path on device")
+    parser.add_argument("--system", action="store_true", help="Include system packages in apps list")
+    parser.add_argument("--filter", type=str, help="Filter keyword for apps/logcat")
+    parser.add_argument("--tag", type=str, help="Logcat tag filter")
+    parser.add_argument("--time", type=int, default=15, help="Duration in seconds for screen record")
+    parser.add_argument("--bootloader", action="store_true", help="Reboot into bootloader")
+    parser.add_argument("--recovery", action="store_true", help="Reboot into recovery")
+    parser.add_argument("--alias", type=str, help="Set alias for device in favorites")
+    parser.add_argument("--delete", type=str, help="Delete profile in favorites")
+    parser.add_argument("--json", action="store_true", help="Export output as JSON (where supported)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debug logs")
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress non-essential logs")
     parser.add_argument("--no-color", action="store_true", help="Disable ANSI color codes")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 
     if args.no_color:
         Colors.disable()
@@ -1070,7 +1537,7 @@ Quick Examples:
         elif cmd == "status":
             manager.status()
         elif cmd == "info":
-            manager.info(target=args.serial)
+            manager.info(target=args.serial, json_export=args.json)
         elif cmd == "reconnect":
             manager.reconnect(alias_or_serial=args.serial)
         elif cmd == "disconnect":
@@ -1081,11 +1548,39 @@ Quick Examples:
             manager.mirror(target=args.serial)
         elif cmd == "shell":
             manager.interactive_shell(target=args.serial)
-        elif cmd == "install":
-            if not args.file:
-                apk = input(f"{Colors.BOLD}Enter APK file path: {Colors.RESET}").strip()
+        elif cmd == "screenshot":
+            out = args.output or args.file
+            manager.screenshot(output_path=out, target=args.serial)
+        elif cmd == "record":
+            out = args.output or args.file
+            manager.record(output_path=out, duration=args.time, target=args.serial)
+        elif cmd == "push":
+            src = args.file or (unknown[0] if len(unknown) > 0 else None)
+            dst = args.remote or args.output or (unknown[1] if len(unknown) > 1 else None)
+            if not src or not dst:
+                safe_print(f"{Colors.RED}Usage: wireless-adb push <local_path> <remote_path>{Colors.RESET}")
             else:
-                apk = args.file
+                manager.push(src, dst, target=args.serial)
+        elif cmd == "pull":
+            src = args.remote or args.file or (unknown[0] if len(unknown) > 0 else None)
+            dst = args.output or (unknown[1] if len(unknown) > 1 else None)
+            if not src:
+                safe_print(f"{Colors.RED}Usage: wireless-adb pull <remote_path> [local_path]{Colors.RESET}")
+            else:
+                manager.pull(src, dst, target=args.serial)
+        elif cmd == "apps":
+            manager.apps(system=args.system, filter_kw=args.filter, target=args.serial)
+        elif cmd == "logcat":
+            manager.logcat(tag=args.tag or args.filter, save_file=args.output, target=args.serial)
+        elif cmd == "reboot":
+            mode = "bootloader" if args.bootloader else ("recovery" if args.recovery else None)
+            manager.reboot_device(mode=mode, target=args.serial)
+        elif cmd == "favorites":
+            manager.favorites(alias=args.alias, target=args.serial, delete=args.delete)
+        elif cmd == "install":
+            apk = args.file or (unknown[0] if len(unknown) > 0 else None)
+            if not apk:
+                apk = input(f"{Colors.BOLD}Enter APK file path: {Colors.RESET}").strip()
             manager.install_apk(apk, target=args.serial)
         elif cmd == "doctor":
             manager.doctor()
@@ -1093,10 +1588,10 @@ Quick Examples:
             manager.watch_daemon()
 
     except KeyboardInterrupt:
-        print(f"\n{Colors.YELLOW}⚡ Operation aborted by user.{Colors.RESET}")
+        safe_print(f"\n{Colors.YELLOW}⚡ Operation aborted by user.{Colors.RESET}")
         sys.exit(130)
     except Exception as e:
-        print(f"\n{Colors.RED}❌ Unexpected error: {e}{Colors.RESET}")
+        safe_print(f"\n{Colors.RED}❌ Unexpected error: {e}{Colors.RESET}")
         if args.verbose:
             import traceback
             traceback.print_exc()
